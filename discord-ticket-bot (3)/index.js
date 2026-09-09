@@ -19,6 +19,7 @@ const {
   startApplication, cancelApplication, submitAnswer, sendApplicationPanel
 } = require("./applications");
 const { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed } = require("./snipe");
+const { handleMessageForSticky } = require("./sticky");
 
 // channelId -> { l, w, h, ign } — dimensions waiting on a priority answer
 const pendingDigouts = new Map();
@@ -505,6 +506,16 @@ client.on("guildMemberAdd", member => {
 // =====================================================================
 client.on("messageDelete", message => {
   recordDeletedMessage(message);
+});
+
+// =====================================================================
+// STICKY MESSAGES — repost the sticky to the bottom of the channel
+// whenever someone else sends a message
+// =====================================================================
+client.on("messageCreate", message => {
+  if (message.author.bot) return;
+  if (!message.guild) return;
+  handleMessageForSticky(message).catch(err => console.error("Sticky repost failed:", err));
 });
 
 // =====================================================================
