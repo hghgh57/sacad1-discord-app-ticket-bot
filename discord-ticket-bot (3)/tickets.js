@@ -73,12 +73,44 @@ async function sendTicketPanel(channel) {
   await channel.send({ embeds: [e], components: [new ActionRowBuilder().addComponents(m)] });
 }
 
-async function logTicketEvent(guild, description, color = "#8B5CF6") {
+async function logTicketEvent(guild, description, color = "#8B5CF6", files = []) {
   if (!config.ticketLogChannel) return;
   const channel = await guild.channels.fetch(config.ticketLogChannel).catch(() => null);
   if (!channel) return;
   const embed = new EmbedBuilder().setColor(color).setDescription(description).setTimestamp();
-  await channel.send({ embeds: [embed] }).catch(() => {});
+  await channel.send({ embeds: [embed], files }).catch(() => {});
 }
 
-module.exports = { tickets, sendTicketPanel, logTicketEvent };
+// Fetches every message in a ticket channel (oldest -> newest) and builds
+// a plain-text transcript. Returns { content, filename } so the caller can
+// wrap it in as many AttachmentBuilder instances as it needs to send.
+async function buildTranscript(channel) {
+  const messages = [];
+  let before;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+    if (batch.size === 0) break;
+    messages.push(...batch.values());
+    before = batch.last().id;
+    if (batch.size < 100) break;
+  }
+  messages.reverse(); // oldest first
+
+  const lines = messages.map(m => {
+    const time = new Date(m.createdTimestamp).toISOString().replace("T", " ").slice(0, 19);
+    let line = `[${time}] ${m.author.tag}: ${m.content || ""}`;
+    if (m.attachments.size) {
+      line += ` [attachment(s): ${[...m.attachments.values()].map(a => a.url).join(", ")}]`;
+    }
+    if (m.embeds.length) {
+      line += ` [${m.embeds.length} embed(s)]`;
+    }
+    return line;
+  });
+
+  const header = `Transcript for #${channel.name}\nGenerated: ${new Date().toISOString()}\n${"=".repeat(60)}\n\n`;
+  return { content: header + (lines.join("\n") || "(no messages)"), filename: `transcript-${channel.name}.txt` };
+}
+
+module.exports = { tickets, sendTicketPanel, logTicketEvent, buildTranscript };
