@@ -23,6 +23,15 @@ const { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed } = require(
 // channelId -> { l, w, h, ign } — dimensions waiting on a priority answer
 const pendingDigouts = new Map();
 
+// channelId -> claimer's user id, for service tickets only (digout/base building).
+// Used to lock the claim/close buttons + typing down to the claimer, the
+// ticket owner, and the bypass role once a service ticket has been claimed.
+const ticketClaims = new Map();
+
+function isServiceChannel(channel) {
+  return Object.values(config.serviceCategories).includes(channel.parentId);
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -259,15 +268,39 @@ client.on("interactionCreate", async i => {
 
   // ---- Ticket claim/close buttons ----
   if (i.isButton() && (i.customId === "claim" || i.customId === "close")) {
-    if (!isStaff(i.member)) return i.reply({ content: "No permission.", ephemeral: true });
+    const isService = isServiceChannel(i.channel);
+    const claimerId = ticketClaims.get(i.channelId);
+    const openerId = i.channel.topic;
+    const hasBypass = i.member.permissions.has(PermissionsBitField.Flags.Administrator) || i.member.roles.cache.has(config.bypassRole);
+
+    if (isService && claimerId) {
+      // Already claimed — locked down to the claimer, the ticket owner, or bypass role only.
+      const allowed = hasBypass || i.user.id === claimerId || i.user.id === openerId;
+      if (!allowed) {
+        return i.reply({ content: "This ticket has been claimed — only the claimer, the ticket owner, or bypass role can do that now.", ephemeral: true });
+      }
+    } else if (!isStaff(i.member)) {
+      return i.reply({ content: "No permission.", ephemeral: true });
+    }
 
     if (i.customId == "claim") {
-      await i.channel.permissionOverwrites.set([
-        { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-        { id: i.channel.topic, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-        { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-        { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
-      ]);
+      if (isService) {
+        await i.channel.permissionOverwrites.set([
+          { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory], deny: [PermissionsBitField.Flags.SendMessages] },
+          { id: i.channel.topic, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+        ]);
+        ticketClaims.set(i.channelId, i.user.id);
+      } else {
+        await i.channel.permissionOverwrites.set([
+          { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: i.channel.topic, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+        ]);
+      }
       const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: `Claimed by ${i.user.tag}` });
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("claim").setLabel("Claimed").setEmoji("✅").setStyle(ButtonStyle.Success).setDisabled(true),
@@ -281,7 +314,7 @@ client.on("interactionCreate", async i => {
       await i.reply({ content: "Closing in 3 seconds..." });
 
       const channel = i.channel;
-      const openerId = channel.topic;
+      ticketClaims.delete(channel.id);
 
       try {
         const { content, filename } = await buildTranscript(channel);
