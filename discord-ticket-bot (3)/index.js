@@ -7,7 +7,7 @@ const {
   AttachmentBuilder, ActivityType
 } = require("discord.js");
 const config = require("./config");
-const { isStaff } = require("./utils");
+const { isStaff, isBuildStaff } = require("./utils");
 const { tickets, sendTicketPanel, logTicketEvent, buildTranscript } = require("./tickets");
 const {
   serviceTickets, parseDimensions, calculateDigoutCost, formatPrice,
@@ -314,7 +314,7 @@ client.on("interactionCreate", async i => {
           { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
           { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
           { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-          { id: config.buyAd.role, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+          ...config.buyAd.roles.map(roleId => ({ id: roleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }))
         ]
       });
 
@@ -325,7 +325,7 @@ client.on("interactionCreate", async i => {
         new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
       );
-      await c.send({ content: `${i.user} <@&${config.buyAd.role}>`, embeds: [emb], components: [row] });
+      await c.send({ content: `${i.user} ${config.buyAd.roles.map(r => `<@&${r}>`).join(" ")}`, embeds: [emb], components: [row] });
       await logTicketEvent(i.guild, `🎫 **Buy Ad** ticket opened by ${i.user} — ${c}`);
       return i.editReply({ content: `Created: ${c}` });
     } catch (err) {
@@ -353,7 +353,7 @@ client.on("interactionCreate", async i => {
       if (!allowed) {
         return i.reply({ content: "This ticket has been claimed — only the claimer, the ticket owner, or bypass role can do that now.", ephemeral: true });
       }
-    } else if (!isStaff(i.member)) {
+    } else if (isService ? !isBuildStaff(i.member) : !isStaff(i.member)) {
       return i.reply({ content: "No permission.", ephemeral: true });
     }
 
