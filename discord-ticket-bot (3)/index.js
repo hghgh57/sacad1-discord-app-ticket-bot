@@ -25,6 +25,11 @@ const { setAfk, clearAfk, getAfk } = require("./afk");
 // channelId -> { l, w, h, ign } — dimensions waiting on a priority answer
 const pendingDigouts = new Map();
 
+// channelId -> { ign } — base building tickets waiting on a priority answer
+// (no dimensions to price automatically, so the +20% just gets noted for
+// staff to add on top of the manual quote)
+const pendingBuilds = new Map();
+
 // channelId -> claimer's user id, for service tickets only (digout/base building).
 // Used to lock the claim/close buttons + typing down to the claimer, the
 // ticket owner, and the bypass role once a service ticket has been claimed.
@@ -162,14 +167,19 @@ client.on("interactionCreate", async i => {
           await c.send({ content: `${i.user} <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
           await c.send({
             content: "One more thing — would you like rush priority?",
-            components: [buildPriorityRow()]
+            components: [buildPriorityRow("digout_priority")]
           });
         } else {
           emb.addFields({ name: "⚠️ Price", value: "Couldn't auto-calculate a price from those dimensions — a staff member will work it out manually." });
           await c.send({ content: `${i.user} <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
         }
       } else {
+        pendingBuilds.set(c.id, { ign });
         await c.send({ content: `${i.user} <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
+        await c.send({
+          content: "One more thing — would you like rush priority?",
+          components: [buildPriorityRow("basebuild_priority")]
+        });
       }
 
       await logTicketEvent(i.guild, `🎫 **${v.label}** ticket opened by ${i.user} — ${c}`);
@@ -201,6 +211,26 @@ client.on("interactionCreate", async i => {
         { name: "Priority", value: priority ? `Yes (+${config.priorityFeePercent}%)` : "No", inline: true },
         { name: "Base price", value: formatPrice(base), inline: false },
         { name: "Total", value: `**${formatPrice(final)}**`, inline: false },
+        { name: "Payments", value: "Please note all payments go though IGN : SacService\nNever discuss in DMs" }
+      );
+
+    return i.update({ content: null, embeds: [embed], components: [] });
+  }
+
+  // ---- Base building priority dropdown answer ----
+  if (i.isStringSelectMenu() && i.customId === "basebuild_priority") {
+    const pending = pendingBuilds.get(i.channelId);
+    if (!pending) {
+      return i.update({ content: "This has already been answered or the ticket data expired.", components: [] });
+    }
+    const priority = i.values[0] === "yes";
+    pendingBuilds.delete(i.channelId);
+
+    const embed = new EmbedBuilder()
+      .setColor("#8B5CF6")
+      .setTitle("💰 Priority")
+      .addFields(
+        { name: "Priority", value: priority ? `Yes (+${config.priorityFeePercent}% added to your manual quote)` : "No", inline: true },
         { name: "Payments", value: "Please note all payments go though IGN : SacService\nNever discuss in DMs" }
       );
 
