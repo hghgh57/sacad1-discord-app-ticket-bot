@@ -81,9 +81,9 @@ async function sendServiceTicketPanel(channel) {
   await channel.send({ embeds: [e], components: [new ActionRowBuilder().addComponents(m)] });
 }
 
-function buildPriorityRow() {
+function buildPriorityRow(customId = "digout_priority") {
   return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder().setCustomId("digout_priority").setPlaceholder("Would you like priority? (+20% fee)")
+    new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder("Would you like priority? (+20% fee)")
       .addOptions(
         { label: "Yes — add priority (+20%)", value: "yes", emoji: "⚡" },
         { label: "No priority", value: "no", emoji: "✖️" }
