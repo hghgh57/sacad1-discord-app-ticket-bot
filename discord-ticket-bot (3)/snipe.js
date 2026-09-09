@@ -9,15 +9,24 @@
 // =====================================================================
 
 const { EmbedBuilder } = require("discord.js");
+const config = require("./config");
 
 // channelId -> { content, authorTag, authorId, avatarURL, attachments, deletedAt }
 const snipes = new Map();
+
+// True if the message's author has a role that's exempt from being sniped.
+function hasSnipeBypassRole(message) {
+  const member = message.member || message.guild?.members.cache.get(message.author?.id);
+  if (!member) return false;
+  return config.snipeBypassRoles.some(roleId => member.roles.cache.has(roleId));
+}
 
 function recordDeletedMessage(message) {
   // Ignore messages we can't read the content of (e.g. uncached partials)
   // and ignore bot messages so the bot doesn't snipe its own embeds.
   if (!message || message.partial) return;
   if (message.author?.bot) return;
+  if (hasSnipeBypassRole(message)) return;
 
   snipes.set(message.channelId, {
     content: message.content || "",
