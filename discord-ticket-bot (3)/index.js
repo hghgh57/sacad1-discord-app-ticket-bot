@@ -568,15 +568,19 @@ client.on("messageCreate", message => {
   }
 
   // Let the sender know if anyone they just mentioned is AFK.
+  // Sent as an embed (not plain content) so the AFK user isn't pinged a second time.
   const mentioned = message.mentions.users.filter(u => !u.bot && u.id !== message.author.id);
   if (mentioned.size) {
     const lines = [];
     for (const user of mentioned.values()) {
       const afk = getAfk(user.id);
-      if (afk) lines.push(`${user} is AFK: ${afk.reason}`);
+      if (afk) lines.push(`**${user.tag}** is AFK: ${afk.reason}`);
     }
     if (lines.length) {
-      message.reply({ content: `💤 ${lines.join("\n")}` }).catch(() => {});
+      const embed = new EmbedBuilder()
+        .setColor(0x2b2d31)
+        .setDescription(`💤 ${lines.join("\n")}`);
+      message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } }).catch(() => {});
     }
   }
 });
@@ -598,6 +602,7 @@ client.on("messageCreate", async message => {
   const [cmd] = message.content.slice(1).trim().split(/\s+/);
 
   if (cmd === "s") {
+    if (!isStaff(message.member)) return message.reply({ content: "No permission." });
     const snipe = getSnipe(message.channelId);
     if (!snipe) return message.reply({ content: "There's nothing to snipe in this channel." });
     return message.channel.send({ embeds: [buildSnipeEmbed(snipe)] });
