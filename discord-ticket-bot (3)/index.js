@@ -3,11 +3,12 @@ const path = require("path");
 const {
   Client, GatewayIntentBits, Partials, ChannelType, PermissionsBitField,
   ActionRowBuilder, EmbedBuilder, ModalBuilder,
-  TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, Collection
+  TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, Collection,
+  AttachmentBuilder
 } = require("discord.js");
 const config = require("./config");
 const { isStaff } = require("./utils");
-const { tickets, sendTicketPanel, logTicketEvent } = require("./tickets");
+const { tickets, sendTicketPanel, logTicketEvent, buildTranscript } = require("./tickets");
 const {
   APPLICATION_TYPES, sessions,
   startApplication, cancelApplication, submitAnswer, sendApplicationPanel
@@ -170,8 +171,35 @@ client.on("interactionCreate", async i => {
     }
     if (i.customId == "close") {
       await i.reply({ content: "Closing in 3 seconds..." });
-      await logTicketEvent(i.guild, `🔒 Ticket **#${i.channel.name}** closed by ${i.user}`);
-      setTimeout(() => i.channel.delete().catch(() => {}), 3000);
+
+      const channel = i.channel;
+      const openerId = channel.topic;
+
+      try {
+        const { content, filename } = await buildTranscript(channel);
+
+        // DM the transcript to whoever opened the ticket
+        const opener = await client.users.fetch(openerId).catch(() => null);
+        if (opener) {
+          await opener.send({
+            content: `📄 Here's the transcript for your ticket **#${channel.name}**.`,
+            files: [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
+          }).catch(() => {});
+        }
+
+        // Post the transcript in the ticket log channel
+        await logTicketEvent(
+          i.guild,
+          `🔒 Ticket **#${channel.name}** closed by ${i.user}`,
+          "#F04747",
+          [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
+        );
+      } catch (err) {
+        console.error(`Failed to build/send transcript for #${channel.name}:`, err);
+        await logTicketEvent(i.guild, `🔒 Ticket **#${channel.name}** closed by ${i.user} (⚠️ transcript failed — check logs)`, "#F04747");
+      }
+
+      setTimeout(() => channel.delete().catch(() => {}), 3000);
     }
     return;
   }
