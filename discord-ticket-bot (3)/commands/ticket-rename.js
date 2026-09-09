@@ -13,11 +13,15 @@ module.exports = {
       return interaction.reply({ content: "No permission.", ephemeral: true });
     }
 
-    const isTicketChannel = interaction.channel.parentId && (
+    const inTicketCategory = interaction.channel.parentId && (
       Object.values(config.categories).includes(interaction.channel.parentId)
       || Object.values(config.serviceCategories).includes(interaction.channel.parentId)
     );
-    if (!isTicketChannel) {
+    // Category alone isn't enough — another ticket bot's channels could sit in
+    // the same category. Every ticket THIS bot creates sets the channel topic
+    // to the opener's user ID (a numeric snowflake), so require that too.
+    const isOurTicket = inTicketCategory && /^\d{15,25}$/.test(interaction.channel.topic || "");
+    if (!isOurTicket) {
       return interaction.reply({ content: "This isn't a ticket channel.", ephemeral: true });
     }
 
