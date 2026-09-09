@@ -1,4 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, TextInputStyle } = require("discord.js");
+const config = require("./config");
 
 // =====================================================================
 // TICKET SYSTEM
@@ -72,4 +73,12 @@ async function sendTicketPanel(channel) {
   await channel.send({ embeds: [e], components: [new ActionRowBuilder().addComponents(m)] });
 }
 
-module.exports = { tickets, sendTicketPanel };
+async function logTicketEvent(guild, description, color = "#8B5CF6") {
+  if (!config.ticketLogChannel) return;
+  const channel = await guild.channels.fetch(config.ticketLogChannel).catch(() => null);
+  if (!channel) return;
+  const embed = new EmbedBuilder().setColor(color).setDescription(description).setTimestamp();
+  await channel.send({ embeds: [embed] }).catch(() => {});
+}
+
+module.exports = { tickets, sendTicketPanel, logTicketEvent };
