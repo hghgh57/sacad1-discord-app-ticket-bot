@@ -1,4 +1,4 @@
-const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, TextInputStyle } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, TextInputStyle } = require("discord.js");
 const config = require("./config");
 
 // =====================================================================
@@ -73,6 +73,22 @@ async function sendTicketPanel(channel) {
   await channel.send({ embeds: [e], components: [new ActionRowBuilder().addComponents(m)] });
 }
 
+// =====================================================================
+// BUY AD PANEL
+// A single button (no dropdown, no modal) — clicking it opens a ticket
+// straight away in config.buyAd.category and pings config.buyAd.role.
+// =====================================================================
+async function sendBuyAdPanel(channel) {
+  const e = new EmbedBuilder()
+    .setColor("#8B5CF6")
+    .setTitle("Buy Ad")
+    .setDescription("Buy a ad");
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("buyad_ticket").setLabel("Buy now").setStyle(ButtonStyle.Primary)
+  );
+  await channel.send({ embeds: [e], components: [row] });
+}
+
 async function logTicketEvent(guild, description, color = "#8B5CF6", files = []) {
   if (!config.ticketLogChannel) return;
   const channel = await guild.channels.fetch(config.ticketLogChannel).catch(() => null);
@@ -113,4 +129,4 @@ async function buildTranscript(channel, reason) {
   return { content: header + (lines.join("\n") || "(no messages)"), filename: `transcript-${channel.name}.txt` };
 }
 
-module.exports = { tickets, sendTicketPanel, logTicketEvent, buildTranscript };
+module.exports = { tickets, sendTicketPanel, sendBuyAdPanel, logTicketEvent, buildTranscript };
