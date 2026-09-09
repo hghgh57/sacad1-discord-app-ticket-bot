@@ -1,44 +1,22 @@
 // =====================================================================
 // STICKY MESSAGES
-// /sticky posts a message that stays at the bottom of the channel: every
-// time someone else sends a message, the old sticky is deleted and a
-// fresh copy is posted underneath it. /unstick removes it.
+// /sticky posts a plain-text message that stays at the bottom of the
+// channel: every time someone else sends a message, the old sticky is
+// deleted and a fresh copy is posted underneath it. /unstick removes it.
 //
 // Storage is in-memory only (a Map), so stickies are lost on restart —
 // re-run /sticky after a restart if you need them to persist.
 // =====================================================================
 
-const { EmbedBuilder } = require("discord.js");
-
-const STICKY_COLOR = "#8B5CF6";
-
 // channelId -> { content, messageId, posting }
 const stickies = new Map();
 
-function buildStickyEmbed(content, gifUrl) {
-  const embed = new EmbedBuilder().setColor(STICKY_COLOR).setDescription(content);
-  if (gifUrl) embed.setImage(gifUrl);
-  return embed;
-}
-
-// Builds the actual message payload to send, based on whether this
-// sticky is plaintext or an embed.
-function buildStickyPayload(sticky) {
-  if (sticky.plaintext) {
-    const content = [sticky.content, sticky.gifUrl].filter(Boolean).join("\n");
-    return { content };
-  }
-  return { embeds: [buildStickyEmbed(sticky.content, sticky.gifUrl)] };
-}
-
-async function setSticky(channel, content, { gifUrl = null, plaintext = false } = {}) {
+async function setSticky(channel, content) {
   // Replace any existing sticky in this channel first.
   await removeSticky(channel);
 
-  const sticky = { content, gifUrl, plaintext, messageId: null, posting: false };
-  const message = await channel.send(buildStickyPayload(sticky));
-  sticky.messageId = message.id;
-  stickies.set(channel.id, sticky);
+  const message = await channel.send({ content });
+  stickies.set(channel.id, { content, messageId: message.id, posting: false });
   return message;
 }
 
@@ -71,7 +49,7 @@ async function handleMessageForSticky(message) {
     const old = await channel.messages.fetch(sticky.messageId).catch(() => null);
     if (old) await old.delete().catch(() => {});
 
-    const fresh = await channel.send(buildStickyPayload(sticky));
+    const fresh = await channel.send({ content: sticky.content });
     sticky.messageId = fresh.id;
   } catch (err) {
     console.error(`Failed to repost sticky in #${message.channel?.name}:`, err);
