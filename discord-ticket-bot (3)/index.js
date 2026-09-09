@@ -4,11 +4,12 @@ const {
   Client, GatewayIntentBits, Partials, ChannelType, PermissionsBitField,
   ActionRowBuilder, EmbedBuilder, ModalBuilder,
   TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, Collection,
-  AttachmentBuilder
+  AttachmentBuilder, ActivityType
 } = require("discord.js");
 const config = require("./config");
 const { isStaff } = require("./utils");
 const { tickets, sendTicketPanel, logTicketEvent, buildTranscript } = require("./tickets");
+const { sendWelcomeMessage } = require("./welcome");
 const {
   APPLICATION_TYPES, sessions,
   startApplication, cancelApplication, submitAnswer, sendApplicationPanel
@@ -17,6 +18,7 @@ const {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent
   ],
@@ -49,6 +51,7 @@ for (const file of commandFiles) {
 client.once("ready", () => {
   console.log(`Ready — loaded ${client.commands.size} command(s): ${[...client.commands.keys()].join(", ")}`);
   console.log("Note: slash commands are registered via `node deploy-commands.js`, not on startup.");
+  client.user.setActivity("discord.gg/sacad1", { type: ActivityType.Watching });
 });
 
 // =====================================================================
@@ -282,6 +285,13 @@ client.on("interactionCreate", async i => {
     }
     return;
   }
+});
+
+// =====================================================================
+// NEW MEMBER WELCOME
+// =====================================================================
+client.on("guildMemberAdd", member => {
+  sendWelcomeMessage(member).catch(err => console.error("Failed to send welcome message:", err));
 });
 
 // =====================================================================
