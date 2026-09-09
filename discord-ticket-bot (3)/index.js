@@ -72,13 +72,18 @@ client.on("interactionCreate", async i => {
   // ---- Ticket select menu ----
   if (i.isStringSelectMenu() && i.customId === "ticket") {
     const t = i.values[0], v = tickets[t];
-    const modal = new ModalBuilder().setCustomId("m_" + t).setTitle(v[1]);
-    ["Question 1", "Question 2", "Question 3"].forEach((q, n) =>
-      modal.addComponents(new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("q" + n).setLabel(q).setStyle(n == 1 ? TextInputStyle.Paragraph : TextInputStyle.Short).setRequired(n != 2)
-      ))
-    );
-    return i.showModal(modal);
+    const modal = new ModalBuilder().setCustomId("m_" + t).setTitle(v.label);
+    v.questions.forEach((q, n) => {
+      const input = new TextInputBuilder().setCustomId("q" + n).setLabel(q.label).setStyle(q.style).setRequired(true);
+      if (q.placeholder) input.setPlaceholder(q.placeholder);
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+    });
+    await i.showModal(modal);
+    // Re-send the panel's own components so the dropdown's selection
+    // highlight clears — otherwise Discord shows a checkmark on the last
+    // picked option and won't let you pick it again until it refreshes.
+    await i.message.edit({ components: i.message.components }).catch(() => {});
+    return;
   }
 
   // ---- Application type select menu ----
@@ -123,12 +128,9 @@ client.on("interactionCreate", async i => {
         { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
       ]
     });
-    const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v[0]} ${v[1]}`)
-      .addFields(
-        { name: "Question 1", value: i.fields.getTextInputValue("q0") },
-        { name: "Question 2", value: i.fields.getTextInputValue("q1") },
-        { name: "Question 3", value: i.fields.getTextInputValue("q2") || "N/A" }
-      ).setFooter({ text: "Open Ticket" });
+    const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v.emoji} ${v.label}`)
+      .addFields(v.questions.map((q, n) => ({ name: q.label, value: i.fields.getTextInputValue("q" + n) || "N/A" })))
+      .setFooter({ text: "Open Ticket" });
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
