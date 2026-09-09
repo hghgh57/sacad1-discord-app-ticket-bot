@@ -19,6 +19,10 @@ module.exports = {
       o.setName("message")
         .setDescription("The message to stick")
         .setRequired(true))
+    .addBooleanOption(o =>
+      o.setName("plaintext")
+        .setDescription("Send as plain text instead of an embed (default: false)")
+        .setRequired(false))
     .addStringOption(o =>
       o.setName("gif_url")
         .setDescription("Link to a GIF to show in the sticky")
@@ -34,6 +38,7 @@ module.exports = {
     }
 
     const content = interaction.options.getString("message");
+    const plaintext = interaction.options.getBoolean("plaintext") ?? false;
     const gifUrlInput = interaction.options.getString("gif_url");
     const gifAttachment = interaction.options.getAttachment("gif_file");
     const gifUrl = gifAttachment?.url || gifUrlInput || null;
@@ -43,7 +48,7 @@ module.exports = {
     }
 
     try {
-      await setSticky(interaction.channel, content, gifUrl);
+      await setSticky(interaction.channel, content, { gifUrl, plaintext });
     } catch (err) {
       console.error("Failed to set sticky:", err);
       return interaction.reply({ content: "⚠️ Couldn't set the sticky message. Check my permissions in this channel.", ephemeral: true });
