@@ -390,7 +390,29 @@ client.on("interactionCreate", async i => {
     return submitAnswer(i.user, session, value);
   }
 
-  // ---- Application: Accept / Deny (in the review channel) ----
+  // ---- Application: Quick Deny (no reason) ----
+  if (i.isButton() && i.customId.startsWith("app_denyquick_")) {
+    if (!isStaff(i.member)) return i.reply({ content: "No permission.", ephemeral: true });
+
+    const rest = i.customId.slice("app_denyquick_".length);
+    const firstUnderscore = rest.indexOf("_");
+    const type = rest.slice(0, firstUnderscore);
+    const applicantId = rest.slice(firstUnderscore + 1);
+    const info = APPLICATION_TYPES[type];
+
+    const embed = EmbedBuilder.from(i.message.embeds[0]).setColor("#F04747").addFields({ name: "Status", value: `❌ Denied by ${i.user.tag}` });
+    await i.update({ embeds: [embed, ...i.message.embeds.slice(1)], components: [] });
+
+    const applicant = await client.users.fetch(applicantId).catch(() => null);
+    if (applicant) {
+      await applicant.send({
+        embeds: [new EmbedBuilder().setColor("#F04747").setTitle(`❌ ${info.label} Denied`).setDescription(`Your ${info.label.toLowerCase()} has been **denied** by ${i.user.tag}.`)]
+      }).catch(() => {});
+    }
+    return;
+  }
+
+  // ---- Application: Accept / Deny w/ Reason (in the review channel) ----
   if (i.isButton() && (i.customId.startsWith("app_accept_") || i.customId.startsWith("app_deny_"))) {
     if (!isStaff(i.member)) return i.reply({ content: "No permission.", ephemeral: true });
 
@@ -404,6 +426,13 @@ client.on("interactionCreate", async i => {
     if (isAccept) {
       const embed = EmbedBuilder.from(i.message.embeds[0]).setColor("#43B581").addFields({ name: "Status", value: `✅ Accepted by ${i.user.tag}` });
       await i.update({ embeds: [embed, ...i.message.embeds.slice(1)], components: [] });
+
+      const roleId = config.approvedRoles[type];
+      if (roleId) {
+        const member = await i.guild.members.fetch(applicantId).catch(() => null);
+        if (member) await member.roles.add(roleId).catch(err => console.error(`Failed to add approved role to ${applicantId}:`, err));
+      }
+
       const applicant = await client.users.fetch(applicantId).catch(() => null);
       if (applicant) {
         await applicant.send({
@@ -413,7 +442,7 @@ client.on("interactionCreate", async i => {
       return;
     }
 
-    // Deny -> ask for a reason via modal
+    // Deny w/ Reason -> ask for a reason via modal
     const modal = new ModalBuilder().setCustomId(`app_deny_reason_${type}_${applicantId}`).setTitle("Deny Application");
     modal.addComponents(new ActionRowBuilder().addComponents(
       new TextInputBuilder().setCustomId("reason").setLabel("Reason for denial").setStyle(TextInputStyle.Paragraph).setRequired(true)
