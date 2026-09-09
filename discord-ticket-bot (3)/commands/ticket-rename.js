@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { isStaff } = require("../utils");
+const { isBuildStaff } = require("../utils");
 const config = require("../config");
 
 module.exports = {
@@ -9,7 +9,7 @@ module.exports = {
     .addStringOption(o => o.setName("name").setDescription("New name for this ticket").setRequired(true)),
 
   async execute(interaction) {
-    if (!isStaff(interaction.member)) {
+    if (!isBuildStaff(interaction.member)) {
       return interaction.reply({ content: "No permission.", ephemeral: true });
     }
 
