@@ -18,6 +18,14 @@ module.exports = {
     help: "1479694579912671293"
   },
 
+  // Service tickets (build orders — digout / base building)
+  serviceCategories: {
+    digout: "DIGOUT_CATEGORY_ID",
+    basebuilding: "BASE_BUILDING_CATEGORY_ID"
+  },
+  digoutPricePerUnit: 1000, // price = L x W x H x this
+  priorityFeePercent: 20,   // rush priority fee, added on top of the base price
+
   // Staff/Builder applications
   applicationPanelChannel: "APPLICATION_PANEL_CHANNEL_ID", // where the panel with the dropdown is posted
   applicationReviewChannels: {
