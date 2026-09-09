@@ -20,11 +20,15 @@ module.exports = {
 
   // Service tickets (build orders — digout / base building)
   serviceCategories: {
-    digout: "1537362856444567592",
-    basebuilding: "1536144986641530880"
+    digout: "DIGOUT_CATEGORY_ID",
+    basebuilding: "BASE_BUILDING_CATEGORY_ID"
   },
   digoutPricePerUnit: 1000, // price = L x W x H x this
   priorityFeePercent: 20,   // rush priority fee, added on top of the base price
+
+  // Roles exempt from ,s (snipe) — if someone with one of these roles
+  // deletes a message, ,s will not be able to show it.
+  snipeBypassRoles: ["1455703614432481485"],
 
   // Staff/Builder applications
   applicationPanelChannel: "APPLICATION_PANEL_CHANNEL_ID", // where the panel with the dropdown is posted
