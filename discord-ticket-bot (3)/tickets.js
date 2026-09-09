@@ -84,7 +84,7 @@ async function logTicketEvent(guild, description, color = "#8B5CF6", files = [])
 // Fetches every message in a ticket channel (oldest -> newest) and builds
 // a plain-text transcript. Returns { content, filename } so the caller can
 // wrap it in as many AttachmentBuilder instances as it needs to send.
-async function buildTranscript(channel) {
+async function buildTranscript(channel, reason) {
   const messages = [];
   let before;
   // eslint-disable-next-line no-constant-condition
@@ -109,7 +109,7 @@ async function buildTranscript(channel) {
     return line;
   });
 
-  const header = `Transcript for #${channel.name}\nGenerated: ${new Date().toISOString()}\n${"=".repeat(60)}\n\n`;
+  const header = `Transcript for #${channel.name}\nGenerated: ${new Date().toISOString()}\n${reason ? `Close reason: ${reason}\n` : ""}${"=".repeat(60)}\n\n`;
   return { content: header + (lines.join("\n") || "(no messages)"), filename: `transcript-${channel.name}.txt` };
 }
 
