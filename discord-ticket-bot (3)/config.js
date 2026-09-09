@@ -6,21 +6,24 @@ module.exports = {
 
   // ==== Everything else — just paste your real IDs here ====
   panelChannel: "PANEL_CHANNEL_ID",
-  bypassRole: "BYPASS_ROLE_ID", // can always type in a ticket even after it's been claimed by someone else (bypasses the claim lock)
-  staffRole: "STAFF_ROLE_ID", // gets pinged + can see every new ticket as soon as it's created
-  ticketLogChannel: "TICKET_LOG_CHANNEL_ID", // where ticket opened/claimed/closed events get logged. Leave as-is (or "") to disable logging.
+  bypassRole: "1546728771208482876", // can always type in a ticket even after it's been claimed by someone else (bypasses the claim lock)
+  staffRole: "1482008632747884736", // gets pinged + can see every new ticket as soon as it's created
+  ticketLogChannel: "1477059741657206934", // where ticket opened/claimed/closed events get logged. Leave as-is (or "") to disable logging.
   categories: {
-    buying: "BUYING_CATEGORY_ID",
-    selling: "SELLING_CATEGORY_ID",
-    partnership: "PARTNERSHIP_CATEGORY_ID",
-    giveaway: "GIVEAWAY_CATEGORY_ID",
-    gamble: "GAMBLE_CATEGORY_ID",
-    help: "HELP_CATEGORY_ID"
+    buying: "1514955042958868551",
+    selling: "1479693976087957596",
+    partnership: "1514960184982634517",
+    giveaway: "1477059744643547228",
+    gamble: "1514961845021048944",
+    help: "1479694579912671293"
   },
 
   // Staff/Builder applications
   applicationPanelChannel: "APPLICATION_PANEL_CHANNEL_ID", // where the panel with the dropdown is posted
-  applicationReviewChannel: "APPLICATION_REVIEW_CHANNEL_ID", // where finished applications get posted for Accept/Deny
+  applicationReviewChannels: {
+    staff: "1477265874560749588",   // finished staff applications get posted here for Accept/Deny
+    builder: "1536248721384144947"  // finished builder applications get posted here for Accept/Deny
+  },
   applicationTimeLimitMs: 3 * 60 * 60 * 1000, // 3 hours
   applicationsEnabled: {
     staff: true,
