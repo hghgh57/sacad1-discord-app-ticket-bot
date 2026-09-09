@@ -46,7 +46,7 @@ const sessions = new Map();
 
 function cancelButtonRow() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("app_cancel").setLabel("Cancel Application").setEmoji("🛑").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId("app_cancel").setLabel("Cancel Application").setEmoji("❌").setStyle(ButtonStyle.Danger)
   );
 }
 
@@ -113,7 +113,7 @@ async function cancelApplication(user) {
   clearSession(user.id);
   const embed = new EmbedBuilder()
     .setColor("#F04747")
-    .setTitle("🛑 Application Cancelled")
+    .setTitle("❌ Application Cancelled")
     .setDescription("Your application has been cancelled. You can start a new one at any time.");
   await user.send({ embeds: [embed] }).catch(() => {});
 }
