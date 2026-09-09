@@ -138,7 +138,8 @@ client.on("interactionCreate", async i => {
         permissionOverwrites: [
           { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
           { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-          { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+          { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: config.buildTicketRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
         ]
       });
 
@@ -157,17 +158,17 @@ client.on("interactionCreate", async i => {
         const dims = parseDimensions(answer1);
         if (dims) {
           pendingDigouts.set(c.id, { ...dims, ign });
-          await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
+          await c.send({ content: `${i.user} <@&${config.staffRole}> <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
           await c.send({
             content: "One more thing — would you like rush priority?",
             components: [buildPriorityRow()]
           });
         } else {
           emb.addFields({ name: "⚠️ Price", value: "Couldn't auto-calculate a price from those dimensions — a staff member will work it out manually." });
-          await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
+          await c.send({ content: `${i.user} <@&${config.staffRole}> <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
         }
       } else {
-        await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
+        await c.send({ content: `${i.user} <@&${config.staffRole}> <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
       }
 
       await logTicketEvent(i.guild, `🎫 **${v.label}** ticket opened by ${i.user} — ${c}`);
@@ -293,6 +294,7 @@ client.on("interactionCreate", async i => {
         await i.channel.permissionOverwrites.set([
           { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
           { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory], deny: [PermissionsBitField.Flags.SendMessages] },
+          { id: config.buildTicketRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory], deny: [PermissionsBitField.Flags.SendMessages] },
           { id: i.channel.topic, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
           { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
           { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
@@ -316,12 +318,16 @@ client.on("interactionCreate", async i => {
       return i.followUp({ content: `Claimed by ${i.user}`, ephemeral: false });
     }
     if (i.customId == "unclaim") {
-      await i.channel.permissionOverwrites.set([
+      const overwrites = [
         { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
         { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
         { id: i.channel.topic, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
         { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
-      ]);
+      ];
+      if (isService) {
+        overwrites.push({ id: config.buildTicketRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
+      }
+      await i.channel.permissionOverwrites.set(overwrites);
       ticketClaims.delete(i.channelId);
       const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: "Open Ticket" });
       const row = new ActionRowBuilder().addComponents(
