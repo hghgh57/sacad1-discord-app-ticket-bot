@@ -1,21 +1,74 @@
-const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, TextInputStyle } = require("discord.js");
 
 // =====================================================================
-// TICKET SYSTEM (unchanged behaviour from the original bot)
+// TICKET SYSTEM
+// Each ticket type has its own emoji, label, and modal questions.
+// question.style: TextInputStyle.Short (one line) or .Paragraph (multi-line)
+// question.placeholder is optional extra hint text shown in the empty field.
 // =====================================================================
 const tickets = {
-  buying: ["🦴", "Buying Spawners"],
-  selling: ["🦴", "Sell Spawners"],
-  partnership: ["🤝", "Partnership"],
-  giveaway: ["💵", "Giveaway Claim/Sponsor"],
-  gamble: ["🤑", "Missed Gamble"],
-  help: ["⚙️", "General Help"]
+  buying: {
+    emoji: "🦴",
+    label: "Buying Spawners",
+    questions: [
+      { label: "What's your IGN?", style: TextInputStyle.Short },
+      { label: "How many are you buying?", style: TextInputStyle.Short }
+    ]
+  },
+  selling: {
+    emoji: "🦴",
+    label: "Sell Spawners",
+    questions: [
+      { label: "What's your IGN?", style: TextInputStyle.Short },
+      { label: "How many are you selling?", style: TextInputStyle.Short }
+    ]
+  },
+  partnership: {
+    emoji: "🤝",
+    label: "Partnership",
+    questions: [
+      { label: "How many members does your server have?", style: TextInputStyle.Short },
+      { label: "Can you send your ad straight away?", style: TextInputStyle.Short }
+    ]
+  },
+  giveaway: {
+    emoji: "💵",
+    label: "Giveaway Claim/Sponsor",
+    questions: [
+      { label: "How much did you win?", style: TextInputStyle.Short },
+      { label: "What's your IGN?", style: TextInputStyle.Short },
+      {
+        label: "Can you provide an uncropped screenshot?",
+        style: TextInputStyle.Short,
+        placeholder: "Yes/No - attach it in the ticket once it's created"
+      }
+    ]
+  },
+  gamble: {
+    emoji: "🤑",
+    label: "Missed Gamble",
+    questions: [
+      { label: "What happened?", style: TextInputStyle.Paragraph },
+      { label: "How much was missed?", style: TextInputStyle.Short },
+      { label: "What is your IGN?", style: TextInputStyle.Short }
+    ]
+  },
+  help: {
+    emoji: "⚙️",
+    label: "General Help",
+    questions: [
+      { label: "What is the problem?", style: TextInputStyle.Paragraph }
+    ]
+  }
 };
 
 async function sendTicketPanel(channel) {
-  const e = new EmbedBuilder().setColor("#8B5CF6").setTitle("🎫 Support Tickets").setDescription("Choose a ticket below.");
+  const e = new EmbedBuilder()
+    .setColor("#8B5CF6")
+    .setTitle("Tickets")
+    .setDescription("Below is a drop down menu to create support tickets and for market tickets  Make sure to read the Ticket rules above ^");
   const m = new StringSelectMenuBuilder().setCustomId("ticket").setPlaceholder("Select...")
-    .addOptions(Object.entries(tickets).map(([k, v]) => ({ label: v[1], value: k, emoji: v[0], description: "Click on this option to create a ticket" })));
+    .addOptions(Object.entries(tickets).map(([k, v]) => ({ label: v.label, value: k, emoji: v.emoji, description: "Click on this option to create a ticket" })));
   await channel.send({ embeds: [e], components: [new ActionRowBuilder().addComponents(m)] });
 }
 
