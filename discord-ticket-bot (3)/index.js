@@ -117,27 +117,35 @@ client.on("interactionCreate", async i => {
   // ---- Application ticket modal submit ----
   if (i.isModalSubmit() && i.customId.startsWith("m_")) {
     const t = i.customId.slice(2), v = tickets[t];
-    const c = await i.guild.channels.create({
-      name: `${t}-${i.user.username}`.toLowerCase(),
-      type: ChannelType.GuildText,
-      parent: config.categories[t],
-      topic: i.user.id,
-      permissionOverwrites: [
-        { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-        { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-        { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
-      ]
-    });
-    const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v.emoji} ${v.label}`)
-      .addFields(v.questions.map((q, n) => ({ name: q.label, value: i.fields.getTextInputValue("q" + n) || "N/A" })))
-      .setFooter({ text: "Open Ticket" });
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
-    );
-    await c.send({ content: `${i.user}`, embeds: [emb], components: [row] });
-    await logTicketEvent(i.guild, `🎫 **${v.label}** ticket opened by ${i.user} — ${c}`);
-    return i.reply({ content: `Created: ${c}`, ephemeral: true });
+    try {
+      const c = await i.guild.channels.create({
+        name: `${t}-${i.user.username}`.toLowerCase(),
+        type: ChannelType.GuildText,
+        parent: config.categories[t],
+        topic: i.user.id,
+        permissionOverwrites: [
+          { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+        ]
+      });
+      const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v.emoji} ${v.label}`)
+        .addFields(v.questions.map((q, n) => ({ name: q.label, value: i.fields.getTextInputValue("q" + n) || "N/A" })))
+        .setFooter({ text: "Open Ticket" });
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+      );
+      await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
+      await logTicketEvent(i.guild, `🎫 **${v.label}** ticket opened by ${i.user} — ${c}`);
+      return i.reply({ content: `Created: ${c}`, ephemeral: true });
+    } catch (err) {
+      console.error(`Failed to create "${t}" ticket for ${i.user.tag} (${i.user.id}):`, err);
+      return i.reply({
+        content: "❌ Couldn't create your ticket — the category ID or role ID in config.js for this ticket type is probably missing or invalid. A server admin should check the bot's logs.",
+        ephemeral: true
+      });
+    }
   }
 
   // ---- Ticket claim/close buttons ----
