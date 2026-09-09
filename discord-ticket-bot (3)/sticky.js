@@ -1,30 +1,69 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { isStaff } = require("../utils");
-const { setSticky } = require("../sticky");
+// =====================================================================
+// STICKY MESSAGES
+// /sticky posts a message that stays at the bottom of the channel: every
+// time someone else sends a message, the old sticky is deleted and a
+// fresh copy is posted underneath it. /unstick removes it.
+//
+// Storage is in-memory only (a Map), so stickies are lost on restart —
+// re-run /sticky after a restart if you need them to persist.
+// =====================================================================
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("sticky")
-    .setDescription("Stick a message to the bottom of this channel")
-    .addStringOption(o =>
-      o.setName("message")
-        .setDescription("The message to stick")
-        .setRequired(true)),
+const { EmbedBuilder } = require("discord.js");
 
-  async execute(interaction) {
-    if (!isStaff(interaction.member)) {
-      return interaction.reply({ content: "No permission.", ephemeral: true });
-    }
+const STICKY_COLOR = "#8B5CF6";
 
-    const content = interaction.options.getString("message");
+// channelId -> { content, messageId, posting }
+const stickies = new Map();
 
-    try {
-      await setSticky(interaction.channel, content);
-    } catch (err) {
-      console.error("Failed to set sticky:", err);
-      return interaction.reply({ content: "⚠️ Couldn't set the sticky message. Check my permissions in this channel.", ephemeral: true });
-    }
+function buildStickyEmbed(content) {
+  return new EmbedBuilder().setColor(STICKY_COLOR).setDescription(content);
+}
 
-    return interaction.reply({ content: "📌 Sticky message set for this channel.", ephemeral: true });
+async function setSticky(channel, content) {
+  // Replace any existing sticky in this channel first.
+  await removeSticky(channel);
+
+  const message = await channel.send({ embeds: [buildStickyEmbed(content)] });
+  stickies.set(channel.id, { content, messageId: message.id, posting: false });
+  return message;
+}
+
+async function removeSticky(channel) {
+  const sticky = stickies.get(channel.id);
+  if (!sticky) return false;
+
+  stickies.delete(channel.id);
+
+  const old = await channel.messages.fetch(sticky.messageId).catch(() => null);
+  if (old) await old.delete().catch(() => {});
+
+  return true;
+}
+
+function hasSticky(channelId) {
+  return stickies.has(channelId);
+}
+
+// Called for every non-bot guild message; reposts the sticky underneath
+// it if the channel has one.
+async function handleMessageForSticky(message) {
+  const sticky = stickies.get(message.channelId);
+  if (!sticky) return;
+  if (sticky.posting) return; // a repost is already in flight, don't stack them
+
+  sticky.posting = true;
+  try {
+    const channel = message.channel;
+    const old = await channel.messages.fetch(sticky.messageId).catch(() => null);
+    if (old) await old.delete().catch(() => {});
+
+    const fresh = await channel.send({ embeds: [buildStickyEmbed(sticky.content)] });
+    sticky.messageId = fresh.id;
+  } catch (err) {
+    console.error(`Failed to repost sticky in #${message.channel?.name}:`, err);
+  } finally {
+    sticky.posting = false;
   }
-};
+}
+
+module.exports = { setSticky, removeSticky, hasSticky, handleMessageForSticky };
