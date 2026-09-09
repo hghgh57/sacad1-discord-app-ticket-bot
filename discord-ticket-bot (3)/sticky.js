@@ -15,16 +15,18 @@ const STICKY_COLOR = "#8B5CF6";
 // channelId -> { content, messageId, posting }
 const stickies = new Map();
 
-function buildStickyEmbed(content) {
-  return new EmbedBuilder().setColor(STICKY_COLOR).setDescription(content);
+function buildStickyEmbed(content, gifUrl) {
+  const embed = new EmbedBuilder().setColor(STICKY_COLOR).setDescription(content);
+  if (gifUrl) embed.setImage(gifUrl);
+  return embed;
 }
 
-async function setSticky(channel, content) {
+async function setSticky(channel, content, gifUrl = null) {
   // Replace any existing sticky in this channel first.
   await removeSticky(channel);
 
-  const message = await channel.send({ embeds: [buildStickyEmbed(content)] });
-  stickies.set(channel.id, { content, messageId: message.id, posting: false });
+  const message = await channel.send({ embeds: [buildStickyEmbed(content, gifUrl)] });
+  stickies.set(channel.id, { content, gifUrl, messageId: message.id, posting: false });
   return message;
 }
 
@@ -57,7 +59,7 @@ async function handleMessageForSticky(message) {
     const old = await channel.messages.fetch(sticky.messageId).catch(() => null);
     if (old) await old.delete().catch(() => {});
 
-    const fresh = await channel.send({ embeds: [buildStickyEmbed(sticky.content)] });
+    const fresh = await channel.send({ embeds: [buildStickyEmbed(sticky.content, sticky.gifUrl)] });
     sticky.messageId = fresh.id;
   } catch (err) {
     console.error(`Failed to repost sticky in #${message.channel?.name}:`, err);
