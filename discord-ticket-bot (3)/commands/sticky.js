@@ -2,6 +2,15 @@ const { SlashCommandBuilder } = require("discord.js");
 const { isStaff } = require("../utils");
 const { setSticky } = require("../sticky");
 
+function isValidUrl(str) {
+  try {
+    const u = new URL(str);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("sticky")
@@ -9,7 +18,15 @@ module.exports = {
     .addStringOption(o =>
       o.setName("message")
         .setDescription("The message to stick")
-        .setRequired(true)),
+        .setRequired(true))
+    .addStringOption(o =>
+      o.setName("gif_url")
+        .setDescription("Link to a GIF to show in the sticky")
+        .setRequired(false))
+    .addAttachmentOption(o =>
+      o.setName("gif_file")
+        .setDescription("Upload a GIF to show in the sticky")
+        .setRequired(false)),
 
   async execute(interaction) {
     if (!isStaff(interaction.member)) {
@@ -17,9 +34,16 @@ module.exports = {
     }
 
     const content = interaction.options.getString("message");
+    const gifUrlInput = interaction.options.getString("gif_url");
+    const gifAttachment = interaction.options.getAttachment("gif_file");
+    const gifUrl = gifAttachment?.url || gifUrlInput || null;
+
+    if (gifUrlInput && !gifAttachment && !isValidUrl(gifUrlInput)) {
+      return interaction.reply({ content: "⚠️ That doesn't look like a valid GIF URL.", ephemeral: true });
+    }
 
     try {
-      await setSticky(interaction.channel, content);
+      await setSticky(interaction.channel, content, gifUrl);
     } catch (err) {
       console.error("Failed to set sticky:", err);
       return interaction.reply({ content: "⚠️ Couldn't set the sticky message. Check my permissions in this channel.", ephemeral: true });
