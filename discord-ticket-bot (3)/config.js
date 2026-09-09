@@ -21,8 +21,10 @@ module.exports = {
   // Buy Ad panel — single "Buy now" button, no modal questions.
   buyAd: {
     category: "1547232247407714457", // ticket channel gets created under this category
-    role: "1523683749223600350",      // pinged + given access on every buy ad ticket
-    role: "1455703614432481485"      // pinged + given access on every buy ad ticket
+    // NOTE: this used to be two separate "role:" keys — in JS object literals a
+    // duplicate key silently overwrites the first, so only 1455703614432481485
+    // was ever actually used. Both are now kept as an array.
+    roles: ["1523683749223600350", "1455703614432481485"] // pinged + given access on every buy ad ticket
   },
 
   // Service tickets (build orders — digout / base building)
