@@ -9,12 +9,19 @@ const {
 const config = require("./config");
 const { isStaff } = require("./utils");
 const { tickets, sendTicketPanel, logTicketEvent, buildTranscript } = require("./tickets");
+const {
+  serviceTickets, parseDimensions, calculateDigoutCost, formatPrice,
+  sendServiceTicketPanel, buildPriorityRow
+} = require("./service-tickets");
 const { sendWelcomeMessage } = require("./welcome");
 const {
   APPLICATION_TYPES, sessions,
   startApplication, cancelApplication, submitAnswer, sendApplicationPanel
 } = require("./applications");
 const { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed } = require("./snipe");
+
+// channelId -> { l, w, h, ign } — dimensions waiting on a priority answer
+const pendingDigouts = new Map();
 
 const client = new Client({
   intents: [
@@ -90,6 +97,102 @@ client.on("interactionCreate", async i => {
     // picked option and won't let you pick it again until it refreshes.
     await i.message.edit({ components: i.message.components }).catch(() => {});
     return;
+  }
+
+  // ---- Service ticket select menu (Digout / Base Building) ----
+  if (i.isStringSelectMenu() && i.customId === "service_ticket") {
+    const t = i.values[0], v = serviceTickets[t];
+    const modal = new ModalBuilder().setCustomId("svcm_" + t).setTitle(v.label);
+    v.questions.forEach((q, n) => {
+      const input = new TextInputBuilder().setCustomId("q" + n).setLabel(q.label).setStyle(q.style).setRequired(true);
+      if (q.placeholder) input.setPlaceholder(q.placeholder);
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+    });
+    await i.showModal(modal);
+    await i.message.edit({ components: i.message.components }).catch(() => {});
+    return;
+  }
+
+  // ---- Service ticket modal submit (Digout / Base Building) ----
+  if (i.isModalSubmit() && i.customId.startsWith("svcm_")) {
+    const t = i.customId.slice("svcm_".length), v = serviceTickets[t];
+    const ign = i.fields.getTextInputValue("q0") || "N/A";
+    const answer1 = i.fields.getTextInputValue("q1") || "N/A";
+
+    try {
+      const c = await i.guild.channels.create({
+        name: `${t}-${i.user.username}`.toLowerCase(),
+        type: ChannelType.GuildText,
+        parent: v.category,
+        topic: i.user.id,
+        permissionOverwrites: [
+          { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+        ]
+      });
+
+      const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v.emoji} ${v.label}`)
+        .addFields(
+          { name: v.questions[0].label, value: ign },
+          { name: v.questions[1].label, value: answer1 }
+        )
+        .setFooter({ text: "Open Ticket" });
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+      );
+
+      if (t === "digout") {
+        const dims = parseDimensions(answer1);
+        if (dims) {
+          pendingDigouts.set(c.id, { ...dims, ign });
+          await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
+          await c.send({
+            content: "One more thing — would you like rush priority?",
+            components: [buildPriorityRow()]
+          });
+        } else {
+          emb.addFields({ name: "⚠️ Price", value: "Couldn't auto-calculate a price from those dimensions — a staff member will work it out manually." });
+          await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
+        }
+      } else {
+        await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
+      }
+
+      await logTicketEvent(i.guild, `🎫 **${v.label}** ticket opened by ${i.user} — ${c}`);
+      return i.reply({ content: `Created: ${c}`, ephemeral: true });
+    } catch (err) {
+      console.error(`Failed to create "${t}" service ticket for ${i.user.tag} (${i.user.id}):`, err);
+      return i.reply({
+        content: "❌ Couldn't create your ticket — the category ID for this ticket type is probably missing or invalid in config.js. A server admin should check the bot's logs.",
+        ephemeral: true
+      });
+    }
+  }
+
+  // ---- Digout priority dropdown answer ----
+  if (i.isStringSelectMenu() && i.customId === "digout_priority") {
+    const pending = pendingDigouts.get(i.channelId);
+    if (!pending) {
+      return i.update({ content: "This has already been answered or the ticket data expired.", components: [] });
+    }
+    const priority = i.values[0] === "yes";
+    const { base, final } = calculateDigoutCost(pending, priority);
+    pendingDigouts.delete(i.channelId);
+
+    const embed = new EmbedBuilder()
+      .setColor("#8B5CF6")
+      .setTitle("💰 Price")
+      .addFields(
+        { name: "Dimensions", value: `${pending.l} x ${pending.w} x ${pending.h}`, inline: true },
+        { name: "Priority", value: priority ? `Yes (+${config.priorityFeePercent}%)` : "No", inline: true },
+        { name: "Base price", value: formatPrice(base), inline: false },
+        { name: "Total", value: `**${formatPrice(final)}**`, inline: false },
+        { name: "Payments", value: "Please note all payments go though IGN : SacService\nNever discuss in DMs" }
+      );
+
+    return i.update({ content: null, embeds: [embed], components: [] });
   }
 
   // ---- Application type select menu ----
