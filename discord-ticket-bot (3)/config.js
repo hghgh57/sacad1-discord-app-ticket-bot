@@ -1,14 +1,15 @@
 module.exports = {
   // ==== From Railway variables ====
   token: process.env.BOT_TOKEN,
-  clientId: process.env.CLIENT_ID, // not used yet — only needed if you add slash commands later
+  clientId: process.env.CLIENT_ID, // used by deploy-commands.js to register slash commands
   guildId: process.env.GUILD_ID,
 
   // ==== Everything else — just paste your real IDs here ====
   panelChannel: "PANEL_CHANNEL_ID",
   bypassRole: "BYPASS_ROLE_ID",
+  ticketLogChannel: "1547106689260593194", // where ticket opened/claimed/closed events get logged. Leave as-is (or "") to disable logging.
   categories: {
-    buying: "BUYING_CATEGORY_ID",
+    buying: "1547085206207340594",
     selling: "SELLING_CATEGORY_ID",
     partnership: "PARTNERSHIP_CATEGORY_ID",
     giveaway: "GIVEAWAY_CATEGORY_ID",
