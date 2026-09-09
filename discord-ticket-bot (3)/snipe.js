@@ -1,83 +1,67 @@
 // =====================================================================
-// STICKY MESSAGES
-// /sticky posts a message that stays at the bottom of the channel: every
-// time someone else sends a message, the old sticky is deleted and a
-// fresh copy is posted underneath it. /unstick removes it.
+// SNIPE
+// Keeps track of the most recently deleted message in each channel so
+// staff can recover it with `,s`. `,cs` clears the stored snipe.
 //
-// Storage is in-memory only (a Map), so stickies are lost on restart —
-// re-run /sticky after a restart if you need them to persist.
+// Storage is in-memory only (a Map), so history is lost on restart and
+// each channel only ever remembers its single most recent deletion —
+// that's intentional and keeps this lightweight.
 // =====================================================================
 
 const { EmbedBuilder } = require("discord.js");
+const config = require("./config");
 
-const STICKY_COLOR = "#8B5CF6";
+// channelId -> { content, authorTag, authorId, avatarURL, attachments, deletedAt }
+const snipes = new Map();
 
-// channelId -> { content, messageId, posting }
-const stickies = new Map();
+// True if the message's author has a role that's exempt from being sniped.
+function hasSnipeBypassRole(message) {
+  const member = message.member || message.guild?.members.cache.get(message.author?.id);
+  if (!member) return false;
+  return config.snipeBypassRoles.some(roleId => member.roles.cache.has(roleId));
+}
 
-function buildStickyEmbed(content, gifUrl) {
-  const embed = new EmbedBuilder().setColor(STICKY_COLOR).setDescription(content);
-  if (gifUrl) embed.setImage(gifUrl);
+function recordDeletedMessage(message) {
+  // Ignore messages we can't read the content of (e.g. uncached partials)
+  // and ignore bot messages so the bot doesn't snipe its own embeds.
+  if (!message || message.partial) return;
+  if (message.author?.bot) return;
+  if (hasSnipeBypassRole(message)) return;
+
+  snipes.set(message.channelId, {
+    content: message.content || "",
+    authorTag: message.author?.tag || "Unknown user",
+    authorId: message.author?.id || null,
+    avatarURL: message.author?.displayAvatarURL?.() || null,
+    attachments: [...message.attachments.values()].map(a => a.url),
+    deletedAt: Date.now()
+  });
+}
+
+function clearSnipe(channelId) {
+  return snipes.delete(channelId);
+}
+
+function getSnipe(channelId) {
+  return snipes.get(channelId) || null;
+}
+
+function buildSnipeEmbed(snipe) {
+  const embed = new EmbedBuilder()
+    .setColor("#F04747")
+    .setAuthor({ name: snipe.authorTag, iconURL: snipe.avatarURL || undefined })
+    .setDescription(snipe.content || "*(no text content)*")
+    .setFooter({ text: "Deleted" })
+    .setTimestamp(snipe.deletedAt);
+
+  if (snipe.attachments.length) {
+    embed.setImage(snipe.attachments[0]);
+    if (snipe.attachments.length > 1) {
+      embed.addFields({ name: "Other attachments", value: snipe.attachments.slice(1).join("\n") });
+    }
+  }
+
   return embed;
 }
 
-// Builds the actual message payload to send, based on whether this
-// sticky is plaintext or an embed.
-function buildStickyPayload(sticky) {
-  if (sticky.plaintext) {
-    const content = [sticky.content, sticky.gifUrl].filter(Boolean).join("\n");
-    return { content };
-  }
-  return { embeds: [buildStickyEmbed(sticky.content, sticky.gifUrl)] };
-}
-
-async function setSticky(channel, content, { gifUrl = null, plaintext = false } = {}) {
-  // Replace any existing sticky in this channel first.
-  await removeSticky(channel);
-
-  const sticky = { content, gifUrl, plaintext, messageId: null, posting: false };
-  const message = await channel.send(buildStickyPayload(sticky));
-  sticky.messageId = message.id;
-  stickies.set(channel.id, sticky);
-  return message;
-}
-
-async function removeSticky(channel) {
-  const sticky = stickies.get(channel.id);
-  if (!sticky) return false;
-
-  stickies.delete(channel.id);
-
-  const old = await channel.messages.fetch(sticky.messageId).catch(() => null);
-  if (old) await old.delete().catch(() => {});
-
-  return true;
-}
-
-function hasSticky(channelId) {
-  return stickies.has(channelId);
-}
-
-// Called for every non-bot guild message; reposts the sticky underneath
-// it if the channel has one.
-async function handleMessageForSticky(message) {
-  const sticky = stickies.get(message.channelId);
-  if (!sticky) return;
-  if (sticky.posting) return; // a repost is already in flight, don't stack them
-
-  sticky.posting = true;
-  try {
-    const channel = message.channel;
-    const old = await channel.messages.fetch(sticky.messageId).catch(() => null);
-    if (old) await old.delete().catch(() => {});
-
-    const fresh = await channel.send(buildStickyPayload(sticky));
-    sticky.messageId = fresh.id;
-  } catch (err) {
-    console.error(`Failed to repost sticky in #${message.channel?.name}:`, err);
-  } finally {
-    sticky.posting = false;
-  }
-}
-
-module.exports = { setSticky, removeSticky, hasSticky, handleMessageForSticky };
+module.exports = { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed };
