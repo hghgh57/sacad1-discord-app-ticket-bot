@@ -7,7 +7,7 @@ const {
 } = require("discord.js");
 const config = require("./config");
 const { isStaff } = require("./utils");
-const { tickets, sendTicketPanel } = require("./tickets");
+const { tickets, sendTicketPanel, logTicketEvent } = require("./tickets");
 const {
   APPLICATION_TYPES, sessions,
   startApplication, cancelApplication, submitAnswer, sendApplicationPanel
@@ -136,6 +136,7 @@ client.on("interactionCreate", async i => {
       new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
     );
     await c.send({ content: `${i.user}`, embeds: [emb], components: [row] });
+    await logTicketEvent(i.guild, `🎫 **${v.label}** ticket opened by ${i.user} — ${c}`);
     return i.reply({ content: `Created: ${c}`, ephemeral: true });
   }
 
@@ -156,10 +157,12 @@ client.on("interactionCreate", async i => {
         new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
       );
       await i.update({ embeds: [e], components: [row] });
+      await logTicketEvent(i.guild, `🤝 Ticket **#${i.channel.name}** claimed by ${i.user}`);
       return i.followUp({ content: `Claimed by ${i.user}`, ephemeral: false });
     }
     if (i.customId == "close") {
       await i.reply({ content: "Closing in 3 seconds..." });
+      await logTicketEvent(i.guild, `🔒 Ticket **#${i.channel.name}** closed by ${i.user}`);
       setTimeout(() => i.channel.delete().catch(() => {}), 3000);
     }
     return;
