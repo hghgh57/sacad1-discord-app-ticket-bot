@@ -266,14 +266,18 @@ client.on("interactionCreate", async i => {
     }
   }
 
-  // ---- Ticket claim/close buttons ----
-  if (i.isButton() && (i.customId === "claim" || i.customId === "close")) {
+  // ---- Ticket claim/close/unclaim buttons ----
+  if (i.isButton() && (i.customId === "claim" || i.customId === "close" || i.customId === "unclaim")) {
     const isService = isServiceChannel(i.channel);
     const claimerId = ticketClaims.get(i.channelId);
     const openerId = i.channel.topic;
     const hasBypass = i.member.permissions.has(PermissionsBitField.Flags.Administrator) || i.member.roles.cache.has(config.bypassRole);
 
-    if (isService && claimerId) {
+    if (i.customId === "unclaim") {
+      // Only the claimer or bypass role can give up a claim (not the opener).
+      const allowed = hasBypass || i.user.id === claimerId;
+      if (!allowed) return i.reply({ content: "Only the claimer or bypass role can unclaim this.", ephemeral: true });
+    } else if (isService && claimerId) {
       // Already claimed — locked down to the claimer, the ticket owner, or bypass role only.
       const allowed = hasBypass || i.user.id === claimerId || i.user.id === openerId;
       if (!allowed) {
@@ -292,7 +296,6 @@ client.on("interactionCreate", async i => {
           { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
           { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
         ]);
-        ticketClaims.set(i.channelId, i.user.id);
       } else {
         await i.channel.permissionOverwrites.set([
           { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -301,14 +304,32 @@ client.on("interactionCreate", async i => {
           { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
         ]);
       }
+      ticketClaims.set(i.channelId, i.user.id);
       const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: `Claimed by ${i.user.tag}` });
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("claim").setLabel("Claimed").setEmoji("✅").setStyle(ButtonStyle.Success).setDisabled(true),
+        new ButtonBuilder().setCustomId("unclaim").setLabel("Unclaim").setEmoji("🔓").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
       );
       await i.update({ embeds: [e], components: [row] });
       await logTicketEvent(i.guild, `🤝 Ticket **#${i.channel.name}** claimed by ${i.user}`);
       return i.followUp({ content: `Claimed by ${i.user}`, ephemeral: false });
+    }
+    if (i.customId == "unclaim") {
+      await i.channel.permissionOverwrites.set([
+        { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+        { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+        { id: i.channel.topic, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+        { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+      ]);
+      ticketClaims.delete(i.channelId);
+      const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: "Open Ticket" });
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+      );
+      await i.update({ embeds: [e], components: [row] });
+      await logTicketEvent(i.guild, `🔓 Ticket **#${i.channel.name}** unclaimed by ${i.user}`);
+      return i.followUp({ content: `Unclaimed by ${i.user}`, ephemeral: false });
     }
     if (i.customId == "close") {
       await i.reply({ content: "Closing in 3 seconds..." });
