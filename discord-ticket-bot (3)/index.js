@@ -299,6 +299,43 @@ client.on("interactionCreate", async i => {
     }
   }
 
+  // ---- Buy Ad ticket button (no dropdown/modal — opens the ticket right away) ----
+  if (i.isButton() && i.customId === "buyad_ticket") {
+    // Acknowledge immediately — channel creation can take a moment and
+    // Discord only allows 3 seconds for the initial response.
+    await i.deferReply({ ephemeral: true }).catch(() => {});
+    try {
+      const c = await i.guild.channels.create({
+        name: `ad-${i.user.username}`.toLowerCase(),
+        type: ChannelType.GuildText,
+        parent: config.buyAd.category,
+        topic: i.user.id,
+        permissionOverwrites: [
+          { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: config.buyAd.role, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+        ]
+      });
+
+      const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle("Buy Ad")
+        .setDescription(`Ticket opened by ${i.user}`)
+        .setFooter({ text: "Open Ticket" });
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+      );
+      await c.send({ content: `${i.user} <@&${config.buyAd.role}>`, embeds: [emb], components: [row] });
+      await logTicketEvent(i.guild, `🎫 **Buy Ad** ticket opened by ${i.user} — ${c}`);
+      return i.editReply({ content: `Created: ${c}` });
+    } catch (err) {
+      console.error(`Failed to create buy ad ticket for ${i.user.tag} (${i.user.id}):`, err);
+      return i.editReply({
+        content: "❌ Couldn't create your ticket — the category ID or role ID in config.js for buyAd is probably missing or invalid, or I'm missing permissions in that category. A server admin should check the bot's logs."
+      }).catch(() => {});
+    }
+  }
+
   // ---- Ticket claim/close/unclaim buttons ----
   if (i.isButton() && (i.customId === "claim" || i.customId === "close" || i.customId === "unclaim")) {
     const isService = isServiceChannel(i.channel);
