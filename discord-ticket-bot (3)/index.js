@@ -20,6 +20,7 @@ const {
 } = require("./applications");
 const { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed } = require("./snipe");
 const { handleMessageForSticky } = require("./sticky");
+const { setAfk, clearAfk, getAfk } = require("./afk");
 
 // channelId -> { l, w, h, ign } — dimensions waiting on a priority answer
 const pendingDigouts = new Map();
@@ -551,12 +552,48 @@ const ROASTS = [
 ];
 
 // =====================================================================
-// GUILD TEXT COMMANDS (,s / ,cs / ,roast)
+// AFK — clears the sender's AFK on any activity, and lets people know
+// when they @mention someone who's currently AFK
+// =====================================================================
+client.on("messageCreate", message => {
+  if (message.author.bot) return;
+  if (!message.guild) return;
+
+  // Sending any message (other than setting AFK again) clears your own AFK.
+  if (!message.content.toLowerCase().startsWith(",afk")) {
+    if (getAfk(message.author.id)) {
+      clearAfk(message.author.id);
+      message.reply({ content: `👋 Welcome back ${message.author}, I removed your AFK status.` }).catch(() => {});
+    }
+  }
+
+  // Let the sender know if anyone they just mentioned is AFK.
+  const mentioned = message.mentions.users.filter(u => !u.bot && u.id !== message.author.id);
+  if (mentioned.size) {
+    const lines = [];
+    for (const user of mentioned.values()) {
+      const afk = getAfk(user.id);
+      if (afk) lines.push(`${user} is AFK: ${afk.reason}`);
+    }
+    if (lines.length) {
+      message.reply({ content: `💤 ${lines.join("\n")}` }).catch(() => {});
+    }
+  }
+});
+
+// =====================================================================
+// GUILD TEXT COMMANDS (,s / ,cs / ,roast / ,afk)
 // =====================================================================
 client.on("messageCreate", async message => {
   if (message.author.bot) return;
   if (!message.guild) return; // guild-only commands
   if (!message.content.startsWith(",")) return;
+
+  if (message.content.toLowerCase().startsWith(",afk")) {
+    const reason = message.content.slice(",afk".length).trim() || "AFK";
+    setAfk(message.author.id, reason);
+    return message.reply({ content: `😴 You're now AFK: ${reason}` });
+  }
 
   const [cmd] = message.content.slice(1).trim().split(/\s+/);
 
