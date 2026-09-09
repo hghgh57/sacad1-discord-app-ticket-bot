@@ -165,7 +165,8 @@ async function finishApplication(user, session) {
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`app_accept_${session.type}_${user.id}`).setLabel("Accept").setEmoji("✅").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`app_deny_${session.type}_${user.id}`).setLabel("Deny").setEmoji("❌").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(`app_denyquick_${session.type}_${user.id}`).setLabel("Deny").setEmoji("❌").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`app_deny_${session.type}_${user.id}`).setLabel("Deny w/ Reason").setEmoji("📝").setStyle(ButtonStyle.Secondary)
   );
 
   await reviewChannel.send({ embeds: [mainEmbed, ...imageEmbeds].slice(0, 10), components: [row] });
