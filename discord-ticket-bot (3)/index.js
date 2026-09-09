@@ -332,37 +332,55 @@ client.on("interactionCreate", async i => {
       return i.followUp({ content: `Unclaimed by ${i.user}`, ephemeral: false });
     }
     if (i.customId == "close") {
-      await i.reply({ content: "Closing in 3 seconds..." });
+      // Ask for an optional reason before actually closing.
+      const modal = new ModalBuilder().setCustomId("close_reason").setTitle("Close Ticket");
+      modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("reason")
+          .setLabel("Reason (optional)")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(false)
+          .setPlaceholder("Why is this ticket being closed?")
+      ));
+      return i.showModal(modal);
+    }
+    return;
+  }
 
-      const channel = i.channel;
-      ticketClaims.delete(channel.id);
+  // ---- Close ticket modal submit ----
+  if (i.isModalSubmit() && i.customId === "close_reason") {
+    const reason = i.fields.getTextInputValue("reason")?.trim();
+    await i.reply({ content: "Closing in 3 seconds..." });
 
-      try {
-        const { content, filename } = await buildTranscript(channel);
+    const channel = i.channel;
+    const openerId = channel.topic;
+    ticketClaims.delete(channel.id);
 
-        // DM the transcript to whoever opened the ticket
-        const opener = await client.users.fetch(openerId).catch(() => null);
-        if (opener) {
-          await opener.send({
-            content: `📄 Here's the transcript for your ticket **#${channel.name}**.`,
-            files: [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
-          }).catch(() => {});
-        }
+    try {
+      const { content, filename } = await buildTranscript(channel, reason);
 
-        // Post the transcript in the ticket log channel
-        await logTicketEvent(
-          i.guild,
-          `🔒 Ticket **#${channel.name}** closed by ${i.user}`,
-          "#F04747",
-          [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
-        );
-      } catch (err) {
-        console.error(`Failed to build/send transcript for #${channel.name}:`, err);
-        await logTicketEvent(i.guild, `🔒 Ticket **#${channel.name}** closed by ${i.user} (⚠️ transcript failed — check logs)`, "#F04747");
+      // DM the transcript to whoever opened the ticket
+      const opener = await client.users.fetch(openerId).catch(() => null);
+      if (opener) {
+        await opener.send({
+          content: `📄 Here's the transcript for your ticket **#${channel.name}**.`,
+          files: [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
+        }).catch(() => {});
       }
 
-      setTimeout(() => channel.delete().catch(() => {}), 3000);
+      // Post the transcript in the ticket log channel
+      await logTicketEvent(
+        i.guild,
+        `🔒 Ticket **#${channel.name}** closed by ${i.user}${reason ? `\n**Reason:** ${reason}` : ""}`,
+        "#F04747",
+        [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
+      );
+    } catch (err) {
+      console.error(`Failed to build/send transcript for #${channel.name}:`, err);
+      await logTicketEvent(i.guild, `🔒 Ticket **#${channel.name}** closed by ${i.user}${reason ? `\n**Reason:** ${reason}` : ""} (⚠️ transcript failed — check logs)`, "#F04747");
     }
+
+    setTimeout(() => channel.delete().catch(() => {}), 3000);
     return;
   }
 
