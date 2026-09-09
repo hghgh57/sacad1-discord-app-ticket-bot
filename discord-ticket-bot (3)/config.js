@@ -6,10 +6,11 @@ module.exports = {
 
   // ==== Everything else — just paste your real IDs here ====
   panelChannel: "PANEL_CHANNEL_ID",
-  bypassRole: "BYPASS_ROLE_ID",
-  ticketLogChannel: "1547106689260593194", // where ticket opened/claimed/closed events get logged. Leave as-is (or "") to disable logging.
+  bypassRole: "BYPASS_ROLE_ID", // can always type in a ticket even after it's been claimed by someone else (bypasses the claim lock)
+  staffRole: "STAFF_ROLE_ID", // gets pinged + can see every new ticket as soon as it's created
+  ticketLogChannel: "TICKET_LOG_CHANNEL_ID", // where ticket opened/claimed/closed events get logged. Leave as-is (or "") to disable logging.
   categories: {
-    buying: "1547085206207340594",
+    buying: "BUYING_CATEGORY_ID",
     selling: "SELLING_CATEGORY_ID",
     partnership: "PARTNERSHIP_CATEGORY_ID",
     giveaway: "GIVEAWAY_CATEGORY_ID",
