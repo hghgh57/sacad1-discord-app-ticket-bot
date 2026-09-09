@@ -76,7 +76,7 @@ async function sendTicketPanel(channel) {
 // =====================================================================
 // BUY AD PANEL
 // A single button (no dropdown, no modal) — clicking it opens a ticket
-// straight away in config.buyAd.category and pings config.buyAd.role.
+// straight away in config.buyAd.category and pings config.buyAd.roles.
 // =====================================================================
 async function sendBuyAdPanel(channel) {
   const e = new EmbedBuilder()
