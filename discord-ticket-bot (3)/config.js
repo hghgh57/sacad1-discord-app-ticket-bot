@@ -32,7 +32,7 @@ module.exports = {
 
   // Welcome messages (sent when a new member joins)
   welcome: {
-    channel: "WELCOME_CHANNEL_ID", // channel where the welcome message gets posted
+    channel: "1466269532615086101", // channel where the welcome message gets posted
     description:
       "Make sure to read <#1466270062322384926> \n" +
       "Enter all the giveaways below:\n" +
