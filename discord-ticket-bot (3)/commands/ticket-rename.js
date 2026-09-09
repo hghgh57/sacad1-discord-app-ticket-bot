@@ -13,7 +13,10 @@ module.exports = {
       return interaction.reply({ content: "No permission.", ephemeral: true });
     }
 
-    const isTicketChannel = interaction.channel.parentId && Object.values(config.categories).includes(interaction.channel.parentId);
+    const isTicketChannel = interaction.channel.parentId && (
+      Object.values(config.categories).includes(interaction.channel.parentId)
+      || Object.values(config.serviceCategories).includes(interaction.channel.parentId)
+    );
     if (!isTicketChannel) {
       return interaction.reply({ content: "This isn't a ticket channel.", ephemeral: true });
     }
