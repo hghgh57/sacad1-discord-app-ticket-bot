@@ -20,8 +20,8 @@ module.exports = {
 
   // Service tickets (build orders — digout / base building)
   serviceCategories: {
-    digout: "DIGOUT_CATEGORY_ID",
-    basebuilding: "BASE_BUILDING_CATEGORY_ID"
+    digout: "1537362856444567592",
+    basebuilding: "1536144986641530880"
   },
   digoutPricePerUnit: 1000, // price = L x W x H x this
   priorityFeePercent: 20,   // rush priority fee, added on top of the base price
