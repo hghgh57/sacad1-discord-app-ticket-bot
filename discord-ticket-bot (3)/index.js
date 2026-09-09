@@ -14,11 +14,13 @@ const {
   APPLICATION_TYPES, sessions,
   startApplication, cancelApplication, submitAnswer, sendApplicationPanel
 } = require("./applications");
+const { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed } = require("./snipe");
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent
   ],
@@ -292,6 +294,36 @@ client.on("interactionCreate", async i => {
 // =====================================================================
 client.on("guildMemberAdd", member => {
   sendWelcomeMessage(member).catch(err => console.error("Failed to send welcome message:", err));
+});
+
+// =====================================================================
+// SNIPE — remember the last deleted message per channel
+// =====================================================================
+client.on("messageDelete", message => {
+  recordDeletedMessage(message);
+});
+
+// =====================================================================
+// GUILD TEXT COMMANDS (,s / ,cs)
+// =====================================================================
+client.on("messageCreate", async message => {
+  if (message.author.bot) return;
+  if (!message.guild) return; // guild-only commands
+  if (!message.content.startsWith(",")) return;
+
+  const [cmd] = message.content.slice(1).trim().split(/\s+/);
+
+  if (cmd === "s") {
+    const snipe = getSnipe(message.channelId);
+    if (!snipe) return message.reply({ content: "There's nothing to snipe in this channel." });
+    return message.channel.send({ embeds: [buildSnipeEmbed(snipe)] });
+  }
+
+  if (cmd === "cs") {
+    if (!isStaff(message.member)) return message.reply({ content: "No permission." });
+    const cleared = clearSnipe(message.channelId);
+    return message.reply({ content: cleared ? "🧹 Snipe cleared for this channel." : "There was nothing to clear." });
+  }
 });
 
 // =====================================================================
