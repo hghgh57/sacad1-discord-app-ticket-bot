@@ -21,12 +21,24 @@ function buildStickyEmbed(content, gifUrl) {
   return embed;
 }
 
-async function setSticky(channel, content, gifUrl = null) {
+// Builds the actual message payload to send, based on whether this
+// sticky is plaintext or an embed.
+function buildStickyPayload(sticky) {
+  if (sticky.plaintext) {
+    const content = [sticky.content, sticky.gifUrl].filter(Boolean).join("\n");
+    return { content };
+  }
+  return { embeds: [buildStickyEmbed(sticky.content, sticky.gifUrl)] };
+}
+
+async function setSticky(channel, content, { gifUrl = null, plaintext = false } = {}) {
   // Replace any existing sticky in this channel first.
   await removeSticky(channel);
 
-  const message = await channel.send({ embeds: [buildStickyEmbed(content, gifUrl)] });
-  stickies.set(channel.id, { content, gifUrl, messageId: message.id, posting: false });
+  const sticky = { content, gifUrl, plaintext, messageId: null, posting: false };
+  const message = await channel.send(buildStickyPayload(sticky));
+  sticky.messageId = message.id;
+  stickies.set(channel.id, sticky);
   return message;
 }
 
@@ -59,7 +71,7 @@ async function handleMessageForSticky(message) {
     const old = await channel.messages.fetch(sticky.messageId).catch(() => null);
     if (old) await old.delete().catch(() => {});
 
-    const fresh = await channel.send({ embeds: [buildStickyEmbed(sticky.content, sticky.gifUrl)] });
+    const fresh = await channel.send(buildStickyPayload(sticky));
     sticky.messageId = fresh.id;
   } catch (err) {
     console.error(`Failed to repost sticky in #${message.channel?.name}:`, err);
