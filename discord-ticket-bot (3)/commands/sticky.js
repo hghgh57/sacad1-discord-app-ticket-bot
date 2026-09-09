@@ -1,59 +1,67 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { isStaff } = require("../utils");
-const { setSticky } = require("../sticky");
+// =====================================================================
+// SNIPE
+// Keeps track of the most recently deleted message in each channel so
+// staff can recover it with `,s`. `,cs` clears the stored snipe.
+//
+// Storage is in-memory only (a Map), so history is lost on restart and
+// each channel only ever remembers its single most recent deletion —
+// that's intentional and keeps this lightweight.
+// =====================================================================
 
-function isValidUrl(str) {
-  try {
-    const u = new URL(str);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
+const { EmbedBuilder } = require("discord.js");
+const config = require("./config");
+
+// channelId -> { content, authorTag, authorId, avatarURL, attachments, deletedAt }
+const snipes = new Map();
+
+// True if the message's author has a role that's exempt from being sniped.
+function hasSnipeBypassRole(message) {
+  const member = message.member || message.guild?.members.cache.get(message.author?.id);
+  if (!member) return false;
+  return config.snipeBypassRoles.some(roleId => member.roles.cache.has(roleId));
 }
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("sticky")
-    .setDescription("Stick a message to the bottom of this channel")
-    .addStringOption(o =>
-      o.setName("message")
-        .setDescription("The message to stick")
-        .setRequired(true))
-    .addBooleanOption(o =>
-      o.setName("plaintext")
-        .setDescription("Send as plain text instead of an embed (default: false)")
-        .setRequired(false))
-    .addStringOption(o =>
-      o.setName("gif_url")
-        .setDescription("Link to a GIF to show in the sticky")
-        .setRequired(false))
-    .addAttachmentOption(o =>
-      o.setName("gif_file")
-        .setDescription("Upload a GIF to show in the sticky")
-        .setRequired(false)),
+function recordDeletedMessage(message) {
+  // Ignore messages we can't read the content of (e.g. uncached partials)
+  // and ignore bot messages so the bot doesn't snipe its own embeds.
+  if (!message || message.partial) return;
+  if (message.author?.bot) return;
+  if (hasSnipeBypassRole(message)) return;
 
-  async execute(interaction) {
-    if (!isStaff(interaction.member)) {
-      return interaction.reply({ content: "No permission.", ephemeral: true });
+  snipes.set(message.channelId, {
+    content: message.content || "",
+    authorTag: message.author?.tag || "Unknown user",
+    authorId: message.author?.id || null,
+    avatarURL: message.author?.displayAvatarURL?.() || null,
+    attachments: [...message.attachments.values()].map(a => a.url),
+    deletedAt: Date.now()
+  });
+}
+
+function clearSnipe(channelId) {
+  return snipes.delete(channelId);
+}
+
+function getSnipe(channelId) {
+  return snipes.get(channelId) || null;
+}
+
+function buildSnipeEmbed(snipe) {
+  const embed = new EmbedBuilder()
+    .setColor("#F04747")
+    .setAuthor({ name: snipe.authorTag, iconURL: snipe.avatarURL || undefined })
+    .setDescription(snipe.content || "*(no text content)*")
+    .setFooter({ text: "Deleted" })
+    .setTimestamp(snipe.deletedAt);
+
+  if (snipe.attachments.length) {
+    embed.setImage(snipe.attachments[0]);
+    if (snipe.attachments.length > 1) {
+      embed.addFields({ name: "Other attachments", value: snipe.attachments.slice(1).join("\n") });
     }
-
-    const content = interaction.options.getString("message");
-    const plaintext = interaction.options.getBoolean("plaintext") ?? false;
-    const gifUrlInput = interaction.options.getString("gif_url");
-    const gifAttachment = interaction.options.getAttachment("gif_file");
-    const gifUrl = gifAttachment?.url || gifUrlInput || null;
-
-    if (gifUrlInput && !gifAttachment && !isValidUrl(gifUrlInput)) {
-      return interaction.reply({ content: "⚠️ That doesn't look like a valid GIF URL.", ephemeral: true });
-    }
-
-    try {
-      await setSticky(interaction.channel, content, { gifUrl, plaintext });
-    } catch (err) {
-      console.error("Failed to set sticky:", err);
-      return interaction.reply({ content: "⚠️ Couldn't set the sticky message. Check my permissions in this channel.", ephemeral: true });
-    }
-
-    return interaction.reply({ content: "📌 Sticky message set for this channel.", ephemeral: true });
   }
-};
+
+  return embed;
+}
+
+module.exports = { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed };
