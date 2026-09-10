@@ -11,7 +11,7 @@ const { isStaff, isBuildStaff } = require("./utils");
 const { tickets, sendTicketPanel, logTicketEvent, buildTranscript } = require("./tickets");
 const {
   serviceTickets, parseDimensions, calculateDigoutCost, formatPrice,
-  sendServiceTicketPanel, buildPriorityRow
+  sendServiceTicketPanel
 } = require("./service-tickets");
 const { sendWelcomeMessage } = require("./welcome");
 const {
@@ -21,14 +21,6 @@ const {
 const { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed } = require("./snipe");
 const { handleMessageForSticky } = require("./sticky");
 const { setAfk, clearAfk, getAfk } = require("./afk");
-
-// channelId -> { l, w, h, ign } — dimensions waiting on a priority answer
-const pendingDigouts = new Map();
-
-// channelId -> { ign } — base building tickets waiting on a priority answer
-// (no dimensions to price automatically, so the +20% just gets noted for
-// staff to add on top of the manual quote)
-const pendingBuilds = new Map();
 
 // channelId -> claimer's user id, for service tickets only (digout/base building).
 // Used to lock the claim/close buttons + typing down to the claimer, the
@@ -134,6 +126,8 @@ client.on("interactionCreate", async i => {
     const t = i.customId.slice("svcm_".length), v = serviceTickets[t];
     const ign = i.fields.getTextInputValue("q0") || "N/A";
     const answer1 = i.fields.getTextInputValue("q1") || "N/A";
+    const priorityRaw = (i.fields.getTextInputValue("q2") || "").trim().toLowerCase();
+    const priority = ["yes", "y", "true"].includes(priorityRaw);
 
     try {
       const c = await i.guild.channels.create({
@@ -152,7 +146,8 @@ client.on("interactionCreate", async i => {
       const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v.emoji} ${v.label}`)
         .addFields(
           { name: v.questions[0].label, value: ign },
-          { name: v.questions[1].label, value: answer1 }
+          { name: v.questions[1].label, value: answer1 },
+          { name: "Priority", value: priority ? `Yes (+${config.priorityFeePercent}%)` : "No", inline: true }
         )
         .setFooter({ text: "Open Ticket" });
       const row = new ActionRowBuilder().addComponents(
@@ -163,24 +158,19 @@ client.on("interactionCreate", async i => {
       if (t === "digout") {
         const dims = parseDimensions(answer1);
         if (dims) {
-          pendingDigouts.set(c.id, { ...dims, ign });
-          await c.send({ content: `${i.user} <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
-          await c.send({
-            content: "One more thing — would you like rush priority?",
-            components: [buildPriorityRow("digout_priority")]
-          });
+          const { base, final } = calculateDigoutCost(dims, priority);
+          emb.addFields(
+            { name: "Base price", value: formatPrice(base), inline: false },
+            { name: "Total", value: `**${formatPrice(final)}**`, inline: false },
+            { name: "Payments", value: "Please note all payments go though IGN : SacService\nNever discuss in DMs" }
+          );
         } else {
           emb.addFields({ name: "⚠️ Price", value: "Couldn't auto-calculate a price from those dimensions — a staff member will work it out manually." });
-          await c.send({ content: `${i.user} <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
         }
       } else {
-        pendingBuilds.set(c.id, { ign });
-        await c.send({ content: `${i.user} <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
-        await c.send({
-          content: "One more thing — would you like rush priority?",
-          components: [buildPriorityRow("basebuild_priority")]
-        });
+        emb.addFields({ name: "Payments", value: "Please note all payments go though IGN : SacService\nNever discuss in DMs" });
       }
+      await c.send({ content: `${i.user} <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
 
       await logTicketEvent(i.guild, `🎫 **${v.label}** ticket opened by ${i.user} — ${c}`);
       return i.reply({ content: `Created: ${c}`, ephemeral: true });
@@ -191,50 +181,6 @@ client.on("interactionCreate", async i => {
         ephemeral: true
       });
     }
-  }
-
-  // ---- Digout priority dropdown answer ----
-  if (i.isStringSelectMenu() && i.customId === "digout_priority") {
-    const pending = pendingDigouts.get(i.channelId);
-    if (!pending) {
-      return i.update({ content: "This has already been answered or the ticket data expired.", components: [] });
-    }
-    const priority = i.values[0] === "yes";
-    const { base, final } = calculateDigoutCost(pending, priority);
-    pendingDigouts.delete(i.channelId);
-
-    const embed = new EmbedBuilder()
-      .setColor("#8B5CF6")
-      .setTitle("💰 Price")
-      .addFields(
-        { name: "Dimensions", value: `${pending.l} x ${pending.w} x ${pending.h}`, inline: true },
-        { name: "Priority", value: priority ? `Yes (+${config.priorityFeePercent}%)` : "No", inline: true },
-        { name: "Base price", value: formatPrice(base), inline: false },
-        { name: "Total", value: `**${formatPrice(final)}**`, inline: false },
-        { name: "Payments", value: "Please note all payments go though IGN : SacService\nNever discuss in DMs" }
-      );
-
-    return i.update({ content: null, embeds: [embed], components: [] });
-  }
-
-  // ---- Base building priority dropdown answer ----
-  if (i.isStringSelectMenu() && i.customId === "basebuild_priority") {
-    const pending = pendingBuilds.get(i.channelId);
-    if (!pending) {
-      return i.update({ content: "This has already been answered or the ticket data expired.", components: [] });
-    }
-    const priority = i.values[0] === "yes";
-    pendingBuilds.delete(i.channelId);
-
-    const embed = new EmbedBuilder()
-      .setColor("#8B5CF6")
-      .setTitle("💰 Priority")
-      .addFields(
-        { name: "Priority", value: priority ? `Yes (+${config.priorityFeePercent}% added to your manual quote)` : "No", inline: true },
-        { name: "Payments", value: "Please note all payments go though IGN : SacService\nNever discuss in DMs" }
-      );
-
-    return i.update({ content: null, embeds: [embed], components: [] });
   }
 
   // ---- Application type select menu ----
