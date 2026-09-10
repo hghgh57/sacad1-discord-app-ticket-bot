@@ -768,7 +768,7 @@ client.on("messageCreate", message => {
 });
 
 // =====================================================================
-// GUILD TEXT COMMANDS (,s / ,cs / ,roast / ,afk)
+// GUILD TEXT COMMANDS (,s / ,cs / ,lock / ,unlock / ,roast / ,afk)
 // =====================================================================
 client.on("messageCreate", async message => {
   if (message.author.bot) return;
@@ -794,6 +794,34 @@ client.on("messageCreate", async message => {
     if (!isStaff(message.member)) return message.reply({ content: "No permission." });
     const cleared = clearSnipe(message.channelId);
     return message.reply({ content: cleared ? "🧹 Snipe cleared for this channel." : "There was nothing to clear." });
+  }
+
+  if (cmd === "lock") {
+    if (!message.member.roles.cache.has(config.lockRole)) return message.reply({ content: "No permission." });
+    const channel = message.channel;
+    const everyoneId = message.guild.roles.everyone.id;
+
+    await channel.permissionOverwrites.edit(everyoneId, {
+      SendMessages: false,
+      AddReactions: false,
+      SendMessagesInThreads: false
+    });
+
+    return channel.send({ content: `🔒 ${channel} was locked by ${message.author}` });
+  }
+
+  if (cmd === "unlock") {
+    if (!message.member.roles.cache.has(config.lockRole)) return message.reply({ content: "No permission." });
+    const channel = message.channel;
+    const everyoneId = message.guild.roles.everyone.id;
+
+    await channel.permissionOverwrites.edit(everyoneId, {
+      SendMessages: null,
+      AddReactions: null,
+      SendMessagesInThreads: null
+    });
+
+    return channel.send({ content: `🔓 ${channel} was unlocked by ${message.author}` });
   }
 
   if (cmd === "roast") {
