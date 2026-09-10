@@ -59,6 +59,11 @@ module.exports = {
     staff: "1535572623797387274",
     builder: "1536195433393557545"
   },
+  // Role pinged in the review channel when a new application comes in
+  applicationPingRoles: {
+    staff: "1523683749223600350",
+    builder: "1536146868160041070"
+  },
 
   // Welcome messages (sent when a new member joins)
   welcome: {
