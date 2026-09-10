@@ -879,8 +879,20 @@ client.on("messageCreate", async message => {
         });
       }
     } else {
-      // Wasn't locked via ,lock (or the bot restarted since) — just clear @everyone's deny.
-      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: null }, { type: 0 });
+      // No saved snapshot — either this channel was never locked via ,lock,
+      // or the bot restarted (e.g. redeploy) and lost it. Either way, we
+      // can't restore the exact prior state, but we can still make sure
+      // nothing is left stuck denying SendMessages: clear it on every
+      // current overwrite, not just @everyone.
+      const current = [...channel.permissionOverwrites.cache.values()];
+      for (const ow of current) {
+        await channel.permissionOverwrites.edit(ow.id, { SendMessages: null }, { type: ow.type }).catch(err => {
+          console.error(`,unlock (no snapshot): failed to clear overwrite ${ow.id} in #${channel.name}:`, err);
+        });
+      }
+      if (!current.some(ow => ow.id === everyoneId)) {
+        await channel.permissionOverwrites.edit(everyoneId, { SendMessages: null }, { type: 0 }).catch(() => {});
+      }
     }
 
     return channel.send({ content: `🔓 ${channel} was unlocked by ${message.author}` });
