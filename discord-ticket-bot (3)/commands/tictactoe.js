@@ -52,8 +52,7 @@ function boardRows(board, disabled = false) {
       row.addComponents(
         new ButtonBuilder()
           .setCustomId(`ttt_cell_${idx}`)
-          .setLabel(cell ? MARK[cell] : "⠀") // blank-ish label, emoji carries the mark
-          .setEmoji(cell ? undefined : undefined)
+          .setLabel(cell ? MARK[cell] : "⠀") // blank-ish label when the cell is empty
           .setStyle(cell === "X" ? ButtonStyle.Danger : cell === "O" ? ButtonStyle.Primary : ButtonStyle.Secondary)
           .setDisabled(disabled || !!cell)
       );
