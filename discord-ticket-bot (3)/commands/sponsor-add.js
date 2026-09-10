@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { isAdmin } = require("../utils");
 const { addSponsor, formatMoney } = require("../stats");
 const { refreshCard } = require("../statsCards");
+const { recordTrackerSponsor } = require("../tracker");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,6 +22,7 @@ module.exports = {
 
     // If this user has a /staff-stats card open somewhere, update it live.
     refreshCard(interaction.client, target.id).catch(() => {});
+    recordTrackerSponsor(interaction.client, interaction.guild.id, target.id, amount).catch(() => {});
 
     const embed = new EmbedBuilder()
       .setColor("#8B5CF6")
