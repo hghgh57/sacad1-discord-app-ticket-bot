@@ -169,7 +169,12 @@ async function finishApplication(user, session) {
     new ButtonBuilder().setCustomId(`app_deny_${session.type}_${user.id}`).setLabel("Deny w/ Reason").setEmoji("📝").setStyle(ButtonStyle.Secondary)
   );
 
-  await reviewChannel.send({ embeds: [mainEmbed, ...imageEmbeds].slice(0, 10), components: [row] });
+  const pingRole = config.applicationPingRoles[session.type];
+  await reviewChannel.send({
+    content: pingRole ? `<@&${pingRole}>` : undefined,
+    embeds: [mainEmbed, ...imageEmbeds].slice(0, 10),
+    components: [row]
+  });
 }
 
 function buildApplicationPanelEmbed() {
