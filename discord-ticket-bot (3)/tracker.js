@@ -54,7 +54,12 @@ function blankStats() {
 // =====================================================================
 // EMBED
 // =====================================================================
-function buildTrackerEmbed(tracker) {
+// NOTE: Discord renders @mentions inside embed field VALUES, but NOT inside
+// field NAMES — a mention in a name just shows up as literal raw text like
+// "<@123456789012345678>". So instead of mentioning them in the name, we
+// fetch each tracked user and use their actual username there, with a
+// clickable mention kept in the value as a bonus.
+async function buildTrackerEmbed(client, tracker) {
   const weekStartUnix = Math.floor(new Date(tracker.weekStart).getTime() / 1000);
   const embed = new EmbedBuilder()
     .setColor("#8B5CF6")
@@ -68,9 +73,13 @@ function buildTrackerEmbed(tracker) {
 
   for (const userId of tracker.users) {
     const s = tracker.stats[userId] || blankStats();
+    const user = await client.users.fetch(userId).catch(() => null);
+    const displayName = user ? user.username : `Unknown User (${userId})`;
+
     embed.addFields({
-      name: `👤 <@${userId}>`,
+      name: `👤 ${displayName}`,
       value:
+        `<@${userId}>\n` +
         `🤝 Claims: **${s.claims}**\n` +
         `🔒 Closes: **${s.closes}**\n` +
         `✏️ Renames: **${s.renames}**\n` +
@@ -86,7 +95,7 @@ async function refreshTrackerEmbed(client, tracker) {
   try {
     const channel = await client.channels.fetch(tracker.channelId);
     const message = await channel.messages.fetch(tracker.messageId);
-    await message.edit({ embeds: [buildTrackerEmbed(tracker)] });
+    await message.edit({ embeds: [await buildTrackerEmbed(client, tracker)] });
   } catch {
     console.warn(`⚠️  Couldn't refresh tracker ${tracker.id} — its message or channel may have been deleted.`);
   }
@@ -110,7 +119,7 @@ async function createTracker(client, guild, channelId, userIds, createdBy) {
     stats: Object.fromEntries(userIds.map(id => [id, blankStats()]))
   };
 
-  const message = await channel.send({ embeds: [buildTrackerEmbed(tracker)] });
+  const message = await channel.send({ embeds: [await buildTrackerEmbed(client, tracker)] });
   tracker.messageId = message.id;
 
   data.trackers.push(tracker);
@@ -135,7 +144,7 @@ async function stopTracker(client, id) {
   try {
     const channel = await client.channels.fetch(tracker.channelId);
     const message = await channel.messages.fetch(tracker.messageId);
-    const stoppedEmbed = EmbedBuilder.from(buildTrackerEmbed(tracker))
+    const stoppedEmbed = EmbedBuilder.from(await buildTrackerEmbed(client, tracker))
       .setTitle("📊 Weekly Activity Tracker — Stopped")
       .setColor("#F04747");
     await message.edit({ embeds: [stoppedEmbed] });
