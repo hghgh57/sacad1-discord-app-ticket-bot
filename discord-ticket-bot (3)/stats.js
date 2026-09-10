@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
 
 // Simple JSON-file-backed store — this bot has no database, and unlike the
 // in-memory Maps elsewhere (snipe, afk, ticketClaims) this data is worth
@@ -28,19 +29,25 @@ function save() {
 const data = load();
 
 function recordClaim(userId) {
-  data.staff[userId] ??= { claims: 0, closes: 0 };
+  data.staff[userId] ??= { claims: 0, closes: 0, renames: 0 };
   data.staff[userId].claims++;
   save();
 }
 
 function recordClose(userId) {
-  data.staff[userId] ??= { claims: 0, closes: 0 };
+  data.staff[userId] ??= { claims: 0, closes: 0, renames: 0 };
   data.staff[userId].closes++;
   save();
 }
 
+function recordRename(userId) {
+  data.staff[userId] ??= { claims: 0, closes: 0, renames: 0 };
+  data.staff[userId].renames++;
+  save();
+}
+
 function getStaffStats(userId) {
-  return data.staff[userId] || { claims: 0, closes: 0 };
+  return data.staff[userId] || { claims: 0, closes: 0, renames: 0 };
 }
 
 function getAllStaffStats() {
@@ -90,14 +97,64 @@ function formatMoney(n) {
   return val + suffix;
 }
 
+// =====================================================================
+// LEADERBOARD — used by /ticket-leaderboard
+// =====================================================================
+const LEADERBOARD_FIELDS = {
+  claims: { label: "Claims", emoji: "🤝" },
+  closes: { label: "Closes", emoji: "🔒" },
+  renames: { label: "Renames", emoji: "✏️" }
+};
+
+function buildLeaderboardMenu(selected) {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId("ticket_leaderboard_select")
+      .setPlaceholder("Choose a leaderboard...")
+      .addOptions(Object.entries(LEADERBOARD_FIELDS).map(([value, info]) => ({
+        label: info.label,
+        value,
+        emoji: info.emoji,
+        default: value === selected
+      })))
+  );
+}
+
+async function buildLeaderboardEmbed(client, field) {
+  const info = LEADERBOARD_FIELDS[field] || LEADERBOARD_FIELDS.claims;
+
+  const entries = Object.entries(data.staff)
+    .map(([userId, s]) => [userId, s[field] || 0])
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  const lines = [];
+  for (let i = 0; i < entries.length; i++) {
+    const [userId, count] = entries[i];
+    const user = await client.users.fetch(userId).catch(() => null);
+    const name = user ? user.tag : `Unknown User (${userId})`;
+    const rank = ["🥇", "🥈", "🥉"][i] || `**${i + 1}.**`;
+    lines.push(`${rank} ${name} — **${count}**`);
+  }
+
+  return new EmbedBuilder()
+    .setColor("#8B5CF6")
+    .setTitle(`📊 ${info.emoji} ${info.label} Leaderboard`)
+    .setDescription(lines.length ? lines.join("\n") : "No data yet.");
+}
+
 module.exports = {
   recordClaim,
   recordClose,
+  recordRename,
   getStaffStats,
   getAllStaffStats,
   addSponsor,
   getSponsorTotal,
   resetUser,
   resetAll,
-  formatMoney
+  formatMoney,
+  buildLeaderboardEmbed,
+  buildLeaderboardMenu
 };
