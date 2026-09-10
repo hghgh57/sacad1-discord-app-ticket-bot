@@ -14,4 +14,12 @@ function isBuildStaff(member) {
   return isStaff(member) || member.roles.cache.has(config.buildTicketRole);
 }
 
-module.exports = { isStaff, isBuildStaff };
+// Administrator permission or the bypass role specifically — narrower than
+// isStaff (which also lets in the regular staffRole). Use this for things
+// you want locked to actual admins/owners, not general staff.
+function isAdmin(member) {
+  return member.permissions.has(PermissionsBitField.Flags.Administrator)
+    || member.roles.cache.has(config.bypassRole);
+}
+
+module.exports = { isStaff, isBuildStaff, isAdmin };
