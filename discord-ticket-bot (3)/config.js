@@ -4,8 +4,6 @@ module.exports = {
   clientId: process.env.CLIENT_ID, // used by deploy-commands.js to register slash commands
   guildId: process.env.GUILD_ID,
 
-  lockRole: "1538332080469966998",
-
   // ==== Everything else — just paste your real IDs here ====
   panelChannel: "PANEL_CHANNEL_ID",
   bypassRole: "1546728771208482876", // can always type in a ticket even after it's been claimed by someone else (bypasses the claim lock)
@@ -41,6 +39,9 @@ module.exports = {
   // Roles exempt from ,s (snipe) — if someone with one of these roles
   // deletes a message, ,s will not be able to show it.
   snipeBypassRoles: ["1455703614432481485"],
+
+  // Only members with this role can use ,lock / ,unlock
+  lockRole: "1538332080469966998",
 
   // Staff/Builder applications
   applicationPanelChannel: "APPLICATION_PANEL_CHANNEL_ID", // where the panel with the dropdown is posted
