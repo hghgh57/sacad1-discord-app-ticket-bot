@@ -71,6 +71,25 @@ function resetAll() {
   save();
 }
 
+// 1500 -> "1.5k", 10000000 -> "10m", 12345678 -> "12.3m", 10000000000 -> "10b"
+function formatMoney(n) {
+  const round1 = v => Math.round(v * 10) / 10;
+  const abs = Math.abs(n);
+  let val, suffix;
+  if (abs >= 1e9) {
+    val = round1(n / 1e9); suffix = "b";
+  } else if (abs >= 1e6) {
+    val = round1(n / 1e6); suffix = "m";
+    if (Math.abs(val) >= 1000) { val = round1(n / 1e9); suffix = "b"; } // e.g. 999999999 -> 1b, not 1000m
+  } else if (abs >= 1e3) {
+    val = round1(n / 1e3); suffix = "k";
+    if (Math.abs(val) >= 1000) { val = round1(n / 1e6); suffix = "m"; } // e.g. 999999 -> 1m, not 1000k
+  } else {
+    return n.toLocaleString();
+  }
+  return val + suffix;
+}
+
 module.exports = {
   recordClaim,
   recordClose,
@@ -79,5 +98,6 @@ module.exports = {
   addSponsor,
   getSponsorTotal,
   resetUser,
-  resetAll
+  resetAll,
+  formatMoney
 };
