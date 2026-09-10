@@ -615,8 +615,112 @@ const ROASTS = [
   "You're the CEO of almost.",
   "You'd miss a free giveaway somehow.",
   "You're running on vibes and bad decisions.",
-  "You're not a clown—you're the whole circus."
+  "You're not a clown—you're the whole circus.",
+  "You're the reason the mute button was invented.",
+  "Your personality peaked in the tutorial.",
+  "You talk a lot for someone who says nothing.",
+  "You're built like an unfinished side quest.",
+  "If stupidity burned calories, you'd disappear.",
+  "You've got the confidence of a billionaire and the IQ of a potato.",
+  "Every group chat has a weak link—you volunteered.",
+  "You couldn't win an argument with autocorrect.",
+  "You're proof that evolution takes breaks.",
+  "You make NPCs look self-aware.",
+  "You're the final boss of bad takes.",
+  "Your barber deserves jail time.",
+  "You're the only person who can lose a 1v0.",
+  "Your ego writes checks your skills can't cash.",
+  "You've got premium confidence on a free trial account.",
+  "Your opinions should come with a skip button.",
+  "You couldn't carry groceries, let alone a team.",
+  "Your aim is so bad the walls feel safe.",
+  "You're the human version of lag.",
+  "Your best achievement is surviving this long.",
+  "You're all keyboard, no gameplay.",
+  "You make wrong decisions look consistent.",
+  "You're the type to drown in shallow water.",
+  "Your common sense is on permanent vacation.",
+  "You got ratioed by reality.",
+  "Your reflection rolls its eyes at you.",
+  "You couldn't find a clue with Google Maps.",
+  "You're built like expired DLC.",
+  "You make disappointment look athletic.",
+  "Even your excuses need better excuses.",
+  "You're the reason \"low expectations\" exist.",
+  "You're running on borrowed brain cells.",
+  "Your chat history should be studied as a warning.",
+  "You couldn't organize a two-piece puzzle.",
+  "Your voice has negative FPS.",
+  "You're allergic to good ideas.",
+  "You're the Wi-Fi dead zone of conversations.",
+  "Your luck is sponsored by failure.",
+  "You make losing look professional.",
+  "You're somehow loud and irrelevant.",
+  "You couldn't hit water if you fell out of a boat.",
+  "Your gameplay is legally considered target practice.",
+  "You're the blueprint for bad timing.",
+  "You couldn't spell victory if it autocorrected itself.",
+  "Your decisions belong in a fail compilation.",
+  "You're a plot twist nobody asked for.",
+  "You make tutorials look difficult.",
+  "You're the type to get lost in a straight hallway.",
+  "Your strategy is just panic with confidence.",
+  "You're a walking skill issue.",
+  "You couldn't roast bread.",
+  "Your comebacks arrive next week.",
+  "You're built like an apology draft.",
+  "You're the before picture in every ad.",
+  "Your presence lowers team morale.",
+  "You couldn't clutch with unlimited retries.",
+  "You're speedrunning embarrassment.",
+  "You're the reason spectators laugh.",
+  "You've mastered the art of being wrong instantly.",
+  "You couldn't lead ducks to a pond.",
+  "Your flex is imaginary.",
+  "You're the human loading icon.",
+  "Your game sense is purely decorative.",
+  "You couldn't outsmart a tutorial bot.",
+  "You're permanently stuck in silver mindset.",
+  "Your confidence has no parental supervision.",
+  "You're built like a bug report.",
+  "You're an expert at fumbling.",
+  "You make friendly fire look intentional.",
+  "You couldn't carry a backpack.",
+  "Your predictions age like milk.",
+  "You're the lag spike in everyone's day.",
+  "Your brain files are corrupted.",
+  "You couldn't finish a sentence without derailing it.",
+  "Your highlight reel is buffering.",
+  "You're the type to miss point-blank.",
+  "Your teamwork is a horror genre.",
+  "You're built like recycled excuses.",
+  "You're the captain of bad decisions.",
+  "Your logic needs customer support.",
+  "You're somehow AFK while talking.",
+  "You couldn't cook instant noodles.",
+  "You're a participation trophy with Wi-Fi.",
+  "Your memory resets every argument.",
+  "You're the reason \"try again\" exists.",
+  "Your luck owes you a refund.",
+  "You're an unpaid actor in everyone else's story.",
+  "You couldn't outplay a loading screen.",
+  "You're the discount version of average.",
+  "Your confidence is louder than your results.",
+  "You couldn't catch a cold in winter.",
+  "You're the typo in the group project.",
+  "Your ideas arrive already outdated.",
+  "You're built like an internet outage.",
+  "You couldn't even gaslight Google.",
+  "You're the side character who thinks he's the main event.",
+  "Your talent is making simple things complicated.",
+  "You're one update away from functioning.",
+  "You're the reason \"skill gap\" is a phrase.",
+  "You're living proof that talking and knowing aren't the same thing."
 ];
+
+// userId -> timestamp (ms) they last successfully used ,roast
+const roastCooldowns = new Map();
+const ROAST_COOLDOWN_MS = 10_000;
 
 // =====================================================================
 // AFK — clears the sender's AFK on any activity, and lets people know
@@ -684,6 +788,15 @@ client.on("messageCreate", async message => {
   if (cmd === "roast") {
     const target = message.mentions.users.first();
     if (!target) return message.reply({ content: "Mention someone to roast! Usage: `,roast @user`" });
+
+    const now = Date.now();
+    const lastUsed = roastCooldowns.get(message.author.id);
+    if (lastUsed && now - lastUsed < ROAST_COOLDOWN_MS) {
+      const remaining = Math.ceil((ROAST_COOLDOWN_MS - (now - lastUsed)) / 1000);
+      return message.reply({ content: `Woah, slow down — wait another ${remaining}s.` });
+    }
+    roastCooldowns.set(message.author.id, now);
+
     const roast = ROASTS[Math.floor(Math.random() * ROASTS.length)];
     return message.channel.send({ content: `${target} ${roast}` });
   }
