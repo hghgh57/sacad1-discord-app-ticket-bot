@@ -824,15 +824,36 @@ client.on("messageCreate", async message => {
       ]))
     }));
 
+    // Track failures instead of letting one bad overwrite (e.g. a role the
+    // bot can't touch) throw and abort the loop with the channel half-locked
+    // and nothing saved to locks.json.
+    const failed = [];
     for (const ow of overwrites) {
-      await channel.permissionOverwrites.edit(ow.id, { SendMessages: false });
+      try {
+        await channel.permissionOverwrites.edit(ow.id, { SendMessages: false });
+      } catch (err) {
+        console.error(`,lock: failed to edit overwrite ${ow.id} in #${channel.name}:`, err);
+        failed.push(ow.id);
+      }
     }
     if (!overwrites.some(ow => ow.id === everyoneId)) {
-      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: false });
-      snapshot.push({ id: everyoneId, prev: { SendMessages: null } });
+      try {
+        await channel.permissionOverwrites.edit(everyoneId, { SendMessages: false });
+        snapshot.push({ id: everyoneId, prev: { SendMessages: null } });
+      } catch (err) {
+        console.error(`,lock: failed to edit @everyone in #${channel.name}:`, err);
+        failed.push(everyoneId);
+      }
     }
-    setLockSnapshot(channel.id, snapshot);
+    // Only persist the overwrites that actually got locked, so ,unlock
+    // doesn't try (and fail again) to restore ones that were never touched.
+    setLockSnapshot(channel.id, snapshot.filter(s => !failed.includes(s.id)));
 
+    if (failed.length) {
+      return channel.send({
+        content: `🔒 ${channel} was partially locked by ${message.author} — couldn't update ${failed.length} overwrite(s) (check the bot's Manage Roles permission and role position). See console for details.`
+      });
+    }
     return channel.send({ content: `🔒 ${channel} was locked by ${message.author}` });
   }
 
