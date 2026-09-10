@@ -22,10 +22,12 @@ const { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed } = require(
 const { handleMessageForSticky } = require("./sticky");
 const { setAfk, clearAfk, getAfk } = require("./afk");
 const { recordClaim, recordClose } = require("./stats");
+const { buildLeaderboardEmbed, buildLeaderboardMenu } = require("./stats");
 const { refreshCard } = require("./statsCards");
 const {
   createTracker, recordTrackerEvent, stopTracker, startWeeklyResetScheduler
 } = require("./tracker");
+const { getLockSnapshot, setLockSnapshot, deleteLockSnapshot } = require("./locks");
 
 // channelId -> claimer's user id. Lives in ./ticketClaims (not a local Map
 // here) so commands/close.js can read the same claim lock the buttons use.
@@ -36,13 +38,7 @@ const { getClaim, setClaim, deleteClaim } = require("./ticketClaims");
 // if the bot restarts mid-setup, the admin just has to run it again.
 const pendingTrackerSetup = new Map();
 
-// channelId -> snapshot of every overwrite's SendMessages/AddReactions/
-// SendMessagesInThreads state right before ,lock ran, so ,unlock can put
-// each one back exactly as it was. Just denying @everyone isn't enough —
-// a role or member can have their own explicit "allow" overwrite on the
-// channel (e.g. ticket claim overwrites) that beats @everyone's deny.
-const lockedChannels = new Map();
-const LOCK_PERMS = ["SendMessages", "AddReactions", "SendMessagesInThreads"];
+const LOCK_PERMS = ["SendMessages"];
 
 function isServiceChannel(channel) {
   return Object.values(config.serviceCategories).includes(channel.parentId);
@@ -154,6 +150,13 @@ client.on("interactionCreate", async i => {
       content: removed ? `🛑 Stopped tracker \`${trackerId}\`.` : "❌ That tracker no longer exists.",
       components: []
     });
+  }
+
+  // ---- Ticket leaderboard select ----
+  if (i.isStringSelectMenu() && i.customId === "ticket_leaderboard_select") {
+    const field = i.values[0];
+    const embed = await buildLeaderboardEmbed(client, field);
+    return i.update({ embeds: [embed], components: [buildLeaderboardMenu(field)] });
   }
 
   // ---- Ticket select menu ----
@@ -822,13 +825,13 @@ client.on("messageCreate", async message => {
     }));
 
     for (const ow of overwrites) {
-      await channel.permissionOverwrites.edit(ow.id, { SendMessages: false, AddReactions: false, SendMessagesInThreads: false });
+      await channel.permissionOverwrites.edit(ow.id, { SendMessages: false });
     }
     if (!overwrites.some(ow => ow.id === everyoneId)) {
-      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: false, AddReactions: false, SendMessagesInThreads: false });
-      snapshot.push({ id: everyoneId, prev: { SendMessages: null, AddReactions: null, SendMessagesInThreads: null } });
+      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: false });
+      snapshot.push({ id: everyoneId, prev: { SendMessages: null } });
     }
-    lockedChannels.set(channel.id, snapshot);
+    setLockSnapshot(channel.id, snapshot);
 
     return channel.send({ content: `🔒 ${channel} was locked by ${message.author}` });
   }
@@ -839,8 +842,8 @@ client.on("messageCreate", async message => {
     const channel = message.channel;
     const everyoneId = message.guild.roles.everyone.id;
 
-    const snapshot = lockedChannels.get(channel.id);
-    lockedChannels.delete(channel.id);
+    const snapshot = getLockSnapshot(channel.id);
+    deleteLockSnapshot(channel.id);
 
     if (snapshot) {
       for (const { id, prev } of snapshot) {
@@ -848,7 +851,7 @@ client.on("messageCreate", async message => {
       }
     } else {
       // Wasn't locked via ,lock (or the bot restarted since) — just clear @everyone's deny.
-      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: null, AddReactions: null, SendMessagesInThreads: null });
+      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: null });
     }
 
     return channel.send({ content: `🔓 ${channel} was unlocked by ${message.author}` });
