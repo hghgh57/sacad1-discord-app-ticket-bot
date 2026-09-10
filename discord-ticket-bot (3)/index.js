@@ -21,6 +21,7 @@ const {
 const { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed } = require("./snipe");
 const { handleMessageForSticky } = require("./sticky");
 const { setAfk, clearAfk, getAfk } = require("./afk");
+const { recordClaim, recordClose } = require("./stats");
 
 // channelId -> claimer's user id, for service tickets only (digout/base building).
 // Used to lock the claim/close buttons + typing down to the claimer, the
@@ -322,6 +323,7 @@ client.on("interactionCreate", async i => {
         ]);
       }
       ticketClaims.set(i.channelId, i.user.id);
+      recordClaim(i.user.id);
       const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: `Claimed by ${i.user.tag}` });
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("unclaim").setLabel("Unclaim").setEmoji("🔓").setStyle(ButtonStyle.Secondary),
@@ -376,6 +378,7 @@ client.on("interactionCreate", async i => {
     const channel = i.channel;
     const openerId = channel.topic;
     ticketClaims.delete(channel.id);
+    recordClose(i.user.id);
 
     try {
       const { content, filename } = await buildTranscript(channel, reason);
