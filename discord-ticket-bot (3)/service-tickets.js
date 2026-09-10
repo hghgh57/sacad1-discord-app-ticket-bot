@@ -35,9 +35,9 @@ const serviceTickets = {
     questions: [
       { label: "What is your IGN?", style: TextInputStyle.Short },
       {
-        label: "Schematic file or link",
+        label: "What build do you want?",
         style: TextInputStyle.Paragraph,
-        placeholder: "Paste a link here, or send the file in the ticket once it's created"
+        placeholder: "Send schematic in ticke"
       },
       {
         label: "Rush priority? (+20% fee)",
