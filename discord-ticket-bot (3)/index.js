@@ -27,10 +27,9 @@ const {
   createTracker, recordTrackerEvent, stopTracker, startWeeklyResetScheduler
 } = require("./tracker");
 
-// channelId -> claimer's user id, for service tickets only (digout/base building).
-// Used to lock the claim/close buttons + typing down to the claimer, the
-// ticket owner, and the bypass role once a service ticket has been claimed.
-const ticketClaims = new Map();
+// channelId -> claimer's user id. Lives in ./ticketClaims (not a local Map
+// here) so commands/close.js can read the same claim lock the buttons use.
+const { getClaim, setClaim, deleteClaim } = require("./ticketClaims");
 
 // staffUserId -> array of selected user IDs, held between the user-select
 // step and the channel-ID modal step of /tracker-start. In-memory only —
@@ -344,7 +343,7 @@ client.on("interactionCreate", async i => {
   // ---- Ticket claim/close/unclaim buttons ----
   if (i.isButton() && (i.customId === "claim" || i.customId === "close" || i.customId === "unclaim")) {
     const isService = isServiceChannel(i.channel);
-    const claimerId = ticketClaims.get(i.channelId);
+    const claimerId = getClaim(i.channelId);
     const openerId = i.channel.topic;
     const hasBypass = i.member.permissions.has(PermissionsBitField.Flags.Administrator) || i.member.roles.cache.has(config.bypassRole);
 
@@ -375,12 +374,13 @@ client.on("interactionCreate", async i => {
       } else {
         await i.channel.permissionOverwrites.set([
           { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory], deny: [PermissionsBitField.Flags.SendMessages] },
           { id: i.channel.topic, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
           { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
           { id: config.bypassRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
         ]);
       }
-      ticketClaims.set(i.channelId, i.user.id);
+      setClaim(i.channelId, i.user.id);
       recordClaim(i.user.id);
       refreshCard(client, i.user.id).catch(() => {});
       recordTrackerEvent(client, i.guild.id, i.user.id, "claims").catch(() => {});
@@ -404,7 +404,7 @@ client.on("interactionCreate", async i => {
         overwrites.push({ id: config.buildTicketRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
       }
       await i.channel.permissionOverwrites.set(overwrites);
-      ticketClaims.delete(i.channelId);
+      deleteClaim(i.channelId);
       const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: "Open Ticket" });
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
@@ -437,7 +437,7 @@ client.on("interactionCreate", async i => {
 
     const channel = i.channel;
     const openerId = channel.topic;
-    ticketClaims.delete(channel.id);
+    deleteClaim(channel.id);
     recordClose(i.user.id);
     refreshCard(client, i.user.id).catch(() => {});
     recordTrackerEvent(client, i.guild.id, i.user.id, "closes").catch(() => {});
