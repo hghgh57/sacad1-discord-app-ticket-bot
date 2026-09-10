@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { isStaff } = require("../utils");
-const { addSponsor } = require("../stats");
+const { isAdmin } = require("../utils");
+const { addSponsor, formatMoney } = require("../stats");
+const { refreshCard } = require("../statsCards");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,7 +11,7 @@ module.exports = {
     .addNumberOption(o => o.setName("amount").setDescription("Amount sponsored").setRequired(true).setMinValue(0.01)),
 
   async execute(interaction) {
-    if (!isStaff(interaction.member)) {
+    if (!isAdmin(interaction.member)) {
       return interaction.reply({ content: "No permission.", ephemeral: true });
     }
 
@@ -18,13 +19,16 @@ module.exports = {
     const amount = interaction.options.getNumber("amount");
     const total = addSponsor(target.id, amount);
 
+    // If this user has a /staff-stats card open somewhere, update it live.
+    refreshCard(interaction.client, target.id).catch(() => {});
+
     const embed = new EmbedBuilder()
       .setColor("#8B5CF6")
       .setTitle("💸 Sponsorship logged")
       .addFields(
         { name: "Sponsor", value: `${target}`, inline: true },
-        { name: "This sponsorship", value: `$${amount.toLocaleString()}`, inline: true },
-        { name: "Total sponsored", value: `$${total.toLocaleString()}`, inline: true }
+        { name: "This sponsorship", value: `$${formatMoney(amount)}`, inline: true },
+        { name: "Total sponsored", value: `$${formatMoney(total)}`, inline: true }
       )
       .setFooter({ text: `Logged by ${interaction.user.tag}` });
 
