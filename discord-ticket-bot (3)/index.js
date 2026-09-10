@@ -36,6 +36,14 @@ const { getClaim, setClaim, deleteClaim } = require("./ticketClaims");
 // if the bot restarts mid-setup, the admin just has to run it again.
 const pendingTrackerSetup = new Map();
 
+// channelId -> snapshot of every overwrite's SendMessages/AddReactions/
+// SendMessagesInThreads state right before ,lock ran, so ,unlock can put
+// each one back exactly as it was. Just denying @everyone isn't enough —
+// a role or member can have their own explicit "allow" overwrite on the
+// channel (e.g. ticket claim overwrites) that beats @everyone's deny.
+const lockedChannels = new Map();
+const LOCK_PERMS = ["SendMessages", "AddReactions", "SendMessagesInThreads"];
+
 function isServiceChannel(channel) {
   return Object.values(config.serviceCategories).includes(channel.parentId);
 }
@@ -802,11 +810,25 @@ client.on("messageCreate", async message => {
     const channel = message.channel;
     const everyoneId = message.guild.roles.everyone.id;
 
-    await channel.permissionOverwrites.edit(everyoneId, {
-      SendMessages: false,
-      AddReactions: false,
-      SendMessagesInThreads: false
-    });
+    const overwrites = [...channel.permissionOverwrites.cache.values()];
+    const snapshot = overwrites.map(ow => ({
+      id: ow.id,
+      prev: Object.fromEntries(LOCK_PERMS.map(p => [
+        p,
+        ow.allow.has(PermissionsBitField.Flags[p]) ? true
+          : ow.deny.has(PermissionsBitField.Flags[p]) ? false
+          : null
+      ]))
+    }));
+
+    for (const ow of overwrites) {
+      await channel.permissionOverwrites.edit(ow.id, { SendMessages: false, AddReactions: false, SendMessagesInThreads: false });
+    }
+    if (!overwrites.some(ow => ow.id === everyoneId)) {
+      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: false, AddReactions: false, SendMessagesInThreads: false });
+      snapshot.push({ id: everyoneId, prev: { SendMessages: null, AddReactions: null, SendMessagesInThreads: null } });
+    }
+    lockedChannels.set(channel.id, snapshot);
 
     return channel.send({ content: `🔒 ${channel} was locked by ${message.author}` });
   }
@@ -817,11 +839,17 @@ client.on("messageCreate", async message => {
     const channel = message.channel;
     const everyoneId = message.guild.roles.everyone.id;
 
-    await channel.permissionOverwrites.edit(everyoneId, {
-      SendMessages: null,
-      AddReactions: null,
-      SendMessagesInThreads: null
-    });
+    const snapshot = lockedChannels.get(channel.id);
+    lockedChannels.delete(channel.id);
+
+    if (snapshot) {
+      for (const { id, prev } of snapshot) {
+        await channel.permissionOverwrites.edit(id, prev).catch(() => {});
+      }
+    } else {
+      // Wasn't locked via ,lock (or the bot restarted since) — just clear @everyone's deny.
+      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: null, AddReactions: null, SendMessagesInThreads: null });
+    }
 
     return channel.send({ content: `🔓 ${channel} was unlocked by ${message.author}` });
   }
