@@ -816,6 +816,7 @@ client.on("messageCreate", async message => {
     const overwrites = [...channel.permissionOverwrites.cache.values()];
     const snapshot = overwrites.map(ow => ({
       id: ow.id,
+      type: ow.type, // 0 = role, 1 = member — needed so .edit() doesn't have to resolve the ID itself
       prev: Object.fromEntries(LOCK_PERMS.map(p => [
         p,
         ow.allow.has(PermissionsBitField.Flags[p]) ? true
@@ -830,7 +831,10 @@ client.on("messageCreate", async message => {
     const failed = [];
     for (const ow of overwrites) {
       try {
-        await channel.permissionOverwrites.edit(ow.id, { SendMessages: false });
+        // Pass { type: ow.type } explicitly — otherwise discord.js tries to
+        // resolve ow.id to a cached User/Role and throws InvalidType for
+        // anything not currently in cache (which any role/member easily can be).
+        await channel.permissionOverwrites.edit(ow.id, { SendMessages: false }, { type: ow.type });
       } catch (err) {
         console.error(`,lock: failed to edit overwrite ${ow.id} in #${channel.name}:`, err);
         failed.push(ow.id);
@@ -838,8 +842,8 @@ client.on("messageCreate", async message => {
     }
     if (!overwrites.some(ow => ow.id === everyoneId)) {
       try {
-        await channel.permissionOverwrites.edit(everyoneId, { SendMessages: false });
-        snapshot.push({ id: everyoneId, prev: { SendMessages: null } });
+        await channel.permissionOverwrites.edit(everyoneId, { SendMessages: false }, { type: 0 });
+        snapshot.push({ id: everyoneId, type: 0, prev: { SendMessages: null } });
       } catch (err) {
         console.error(`,lock: failed to edit @everyone in #${channel.name}:`, err);
         failed.push(everyoneId);
@@ -867,12 +871,16 @@ client.on("messageCreate", async message => {
     deleteLockSnapshot(channel.id);
 
     if (snapshot) {
-      for (const { id, prev } of snapshot) {
-        await channel.permissionOverwrites.edit(id, prev).catch(() => {});
+      for (const { id, type, prev } of snapshot) {
+        // type may be undefined on snapshots saved before this fix — fall
+        // back to role (0), which covers the common case (@everyone/staff roles).
+        await channel.permissionOverwrites.edit(id, prev, { type: type ?? 0 }).catch(err => {
+          console.error(`,unlock: failed to restore overwrite ${id} in #${channel.name}:`, err);
+        });
       }
     } else {
       // Wasn't locked via ,lock (or the bot restarted since) — just clear @everyone's deny.
-      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: null });
+      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: null }, { type: 0 });
     }
 
     return channel.send({ content: `🔓 ${channel} was unlocked by ${message.author}` });
