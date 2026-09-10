@@ -768,7 +768,7 @@ client.on("messageCreate", message => {
 });
 
 // =====================================================================
-// GUILD TEXT COMMANDS (,s / ,cs / ,lock / ,unlock / ,roast / ,afk)
+// GUILD TEXT COMMANDS (,s / ,cs / ,roast / ,afk)
 // =====================================================================
 client.on("messageCreate", async message => {
   if (message.author.bot) return;
@@ -797,7 +797,8 @@ client.on("messageCreate", async message => {
   }
 
   if (cmd === "lock") {
-    if (!message.member.roles.cache.has(config.lockRole)) return message.reply({ content: "No permission." });
+    const canLock = message.member.permissions.has(PermissionsBitField.Flags.Administrator) || message.member.roles.cache.has(config.lockRole);
+    if (!canLock) return message.reply({ content: "No permission." });
     const channel = message.channel;
     const everyoneId = message.guild.roles.everyone.id;
 
@@ -811,7 +812,8 @@ client.on("messageCreate", async message => {
   }
 
   if (cmd === "unlock") {
-    if (!message.member.roles.cache.has(config.lockRole)) return message.reply({ content: "No permission." });
+    const canLock = message.member.permissions.has(PermissionsBitField.Flags.Administrator) || message.member.roles.cache.has(config.lockRole);
+    if (!canLock) return message.reply({ content: "No permission." });
     const channel = message.channel;
     const everyoneId = message.guild.roles.everyone.id;
 
