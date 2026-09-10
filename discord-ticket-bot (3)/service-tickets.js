@@ -20,6 +20,11 @@ const serviceTickets = {
         label: "What are the dimensions of the dig?",
         style: TextInputStyle.Short,
         placeholder: "e.g. 10 x 10 x 10"
+      },
+      {
+        label: "Rush priority? (+20% fee)",
+        style: TextInputStyle.Short,
+        placeholder: "yes or no"
       }
     ]
   },
@@ -33,6 +38,11 @@ const serviceTickets = {
         label: "Schematic file or link",
         style: TextInputStyle.Paragraph,
         placeholder: "Paste a link here, or send the file in the ticket once it's created"
+      },
+      {
+        label: "Rush priority? (+20% fee)",
+        style: TextInputStyle.Short,
+        placeholder: "yes or no"
       }
     ]
   }
@@ -81,21 +91,10 @@ async function sendServiceTicketPanel(channel) {
   await channel.send({ embeds: [e], components: [new ActionRowBuilder().addComponents(m)] });
 }
 
-function buildPriorityRow(customId = "digout_priority") {
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder("Would you like priority? (+20% fee)")
-      .addOptions(
-        { label: "Yes — add priority (+20%)", value: "yes", emoji: "⚡" },
-        { label: "No priority", value: "no", emoji: "✖️" }
-      )
-  );
-}
-
 module.exports = {
   serviceTickets,
   parseDimensions,
   calculateDigoutCost,
   formatPrice,
-  sendServiceTicketPanel,
-  buildPriorityRow
+  sendServiceTicketPanel
 };
