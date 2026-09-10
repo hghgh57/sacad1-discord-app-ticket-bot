@@ -54,11 +54,21 @@ function blankStats() {
 // =====================================================================
 // EMBED
 // =====================================================================
+// Mentions that live *inside* an embed (field names/values) render as
+// clickable @mentions, but Discord does NOT send a notification/ping for
+// them — only a mention sitting in the message's plain CONTENT actually
+// pings. So the tracker message always carries a real content line
+// mentioning every tracked user, with the embed underneath for the
+// live-updating scoreboard.
+function buildTrackerContent(tracker) {
+  if (!tracker.users.length) return "📣 **Tracked users:** *none*";
+  return `📣 **Tracked users:** ${tracker.users.map(id => `<@${id}>`).join(" ")}`;
+}
+
 // NOTE: Discord renders @mentions inside embed field VALUES, but NOT inside
 // field NAMES — a mention in a name just shows up as literal raw text like
 // "<@123456789012345678>". So instead of mentioning them in the name, we
-// fetch each tracked user and use their actual username there, with a
-// clickable mention kept in the value as a bonus.
+// fetch each tracked user and use their actual username there.
 async function buildTrackerEmbed(client, tracker) {
   const weekStartUnix = Math.floor(new Date(tracker.weekStart).getTime() / 1000);
   const embed = new EmbedBuilder()
@@ -79,7 +89,6 @@ async function buildTrackerEmbed(client, tracker) {
     embed.addFields({
       name: `👤 ${displayName}`,
       value:
-        `<@${userId}>\n` +
         `🤝 Claims: **${s.claims}**\n` +
         `🔒 Closes: **${s.closes}**\n` +
         `✏️ Renames: **${s.renames}**\n` +
@@ -95,7 +104,7 @@ async function refreshTrackerEmbed(client, tracker) {
   try {
     const channel = await client.channels.fetch(tracker.channelId);
     const message = await channel.messages.fetch(tracker.messageId);
-    await message.edit({ embeds: [await buildTrackerEmbed(client, tracker)] });
+    await message.edit({ content: buildTrackerContent(tracker), embeds: [await buildTrackerEmbed(client, tracker)] });
   } catch {
     console.warn(`⚠️  Couldn't refresh tracker ${tracker.id} — its message or channel may have been deleted.`);
   }
@@ -119,7 +128,10 @@ async function createTracker(client, guild, channelId, userIds, createdBy) {
     stats: Object.fromEntries(userIds.map(id => [id, blankStats()]))
   };
 
-  const message = await channel.send({ embeds: [await buildTrackerEmbed(client, tracker)] });
+  const message = await channel.send({
+    content: buildTrackerContent(tracker),
+    embeds: [await buildTrackerEmbed(client, tracker)]
+  });
   tracker.messageId = message.id;
 
   data.trackers.push(tracker);
