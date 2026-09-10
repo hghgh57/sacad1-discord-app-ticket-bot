@@ -23,11 +23,19 @@ const { handleMessageForSticky } = require("./sticky");
 const { setAfk, clearAfk, getAfk } = require("./afk");
 const { recordClaim, recordClose } = require("./stats");
 const { refreshCard } = require("./statsCards");
+const {
+  createTracker, recordTrackerEvent, stopTracker, startWeeklyResetScheduler
+} = require("./tracker");
 
 // channelId -> claimer's user id, for service tickets only (digout/base building).
 // Used to lock the claim/close buttons + typing down to the claimer, the
 // ticket owner, and the bypass role once a service ticket has been claimed.
 const ticketClaims = new Map();
+
+// staffUserId -> array of selected user IDs, held between the user-select
+// step and the channel-ID modal step of /tracker-start. In-memory only —
+// if the bot restarts mid-setup, the admin just has to run it again.
+const pendingTrackerSetup = new Map();
 
 function isServiceChannel(channel) {
   return Object.values(config.serviceCategories).includes(channel.parentId);
@@ -71,6 +79,7 @@ client.once("ready", () => {
   console.log(`Ready — loaded ${client.commands.size} command(s): ${[...client.commands.keys()].join(", ")}`);
   console.log("Note: slash commands are registered via `node deploy-commands.js`, not on startup.");
   client.user.setActivity("discord.gg/sacad1", { type: ActivityType.Watching });
+  startWeeklyResetScheduler(client);
 });
 
 // =====================================================================
@@ -90,6 +99,54 @@ client.on("interactionCreate", async i => {
       else await i.reply(payload).catch(() => {});
     }
     return;
+  }
+
+  // ---- Tracker: user select step (/tracker-start step 1) ----
+  if (i.isUserSelectMenu() && i.customId === "tracker_select_users") {
+    pendingTrackerSetup.set(i.user.id, i.values);
+    const modal = new ModalBuilder().setCustomId("tracker_channel_modal").setTitle("Tracker channel");
+    modal.addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("channel_id")
+        .setLabel("Channel ID to post the tracker in")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setPlaceholder("e.g. 123456789012345678")
+    ));
+    return i.showModal(modal);
+  }
+
+  // ---- Tracker: channel modal submit (/tracker-start step 2) ----
+  if (i.isModalSubmit() && i.customId === "tracker_channel_modal") {
+    const userIds = pendingTrackerSetup.get(i.user.id);
+    if (!userIds) {
+      return i.reply({ content: "❌ That setup expired — please run `/tracker-start` again.", ephemeral: true });
+    }
+
+    const channelId = i.fields.getTextInputValue("channel_id").trim();
+    const channel = await i.guild.channels.fetch(channelId).catch(() => null);
+    if (!channel || !channel.isTextBased()) {
+      return i.reply({ content: "❌ Couldn't find a text channel with that ID in this server.", ephemeral: true });
+    }
+
+    pendingTrackerSetup.delete(i.user.id);
+    try {
+      await createTracker(client, i.guild, channel.id, userIds, i.user.id);
+      return i.reply({ content: `✅ Tracker started — posting live in ${channel} and tracking ${userIds.length} user(s).`, ephemeral: true });
+    } catch (err) {
+      console.error("Failed to create tracker:", err);
+      return i.reply({ content: "❌ Something went wrong creating the tracker — check that I have permission to send messages in that channel, then check the logs.", ephemeral: true });
+    }
+  }
+
+  // ---- Tracker: stop select (/tracker-stop) ----
+  if (i.isStringSelectMenu() && i.customId === "tracker_stop_select") {
+    const trackerId = i.values[0];
+    const removed = await stopTracker(client, trackerId);
+    return i.update({
+      content: removed ? `🛑 Stopped tracker \`${trackerId}\`.` : "❌ That tracker no longer exists.",
+      components: []
+    });
   }
 
   // ---- Ticket select menu ----
@@ -326,6 +383,7 @@ client.on("interactionCreate", async i => {
       ticketClaims.set(i.channelId, i.user.id);
       recordClaim(i.user.id);
       refreshCard(client, i.user.id).catch(() => {});
+      recordTrackerEvent(client, i.guild.id, i.user.id, "claims").catch(() => {});
       const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: `Claimed by ${i.user.tag}` });
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("unclaim").setLabel("Unclaim").setEmoji("🔓").setStyle(ButtonStyle.Secondary),
@@ -382,6 +440,7 @@ client.on("interactionCreate", async i => {
     ticketClaims.delete(channel.id);
     recordClose(i.user.id);
     refreshCard(client, i.user.id).catch(() => {});
+    recordTrackerEvent(client, i.guild.id, i.user.id, "closes").catch(() => {});
 
     try {
       const { content, filename } = await buildTranscript(channel, reason);
