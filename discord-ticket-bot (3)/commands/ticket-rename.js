@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { isBuildStaff } = require("../utils");
 const config = require("../config");
+const { recordTrackerEvent } = require("../tracker");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -32,6 +33,7 @@ module.exports = {
       .slice(0, 90) || "ticket";
 
     await interaction.channel.setName(newName, `Renamed by ${interaction.user.tag}`);
+    recordTrackerEvent(interaction.client, interaction.guild.id, interaction.user.id, "renames").catch(() => {});
     return interaction.reply({ content: `✅ Renamed this ticket to **${newName}**.` });
   }
 };
