@@ -28,14 +28,24 @@ const {
   createTracker, recordTrackerEvent, stopTracker, startWeeklyResetScheduler
 } = require("./tracker");
 const { getLockSnapshot, setLockSnapshot, deleteLockSnapshot } = require("./locks");
+const {
+  buildStepOneComponents: buildTrackerStepOneComponents,
+  buildStepOneContent: buildTrackerStepOneContent,
+  mergeSelectionIntoIds: mergeTrackerSelectionIntoIds
+} = require("./commands/tracker-start");
 
 // channelId -> claimer's user id. Lives in ./ticketClaims (not a local Map
 // here) so commands/close.js can read the same claim lock the buttons use.
 const { getClaim, setClaim, deleteClaim } = require("./ticketClaims");
 
-// staffUserId -> array of selected user IDs, held between the user-select
-// step and the channel-ID modal step of /tracker-start. In-memory only —
-// if the bot restarts mid-setup, the admin just has to run it again.
+// staffUserId -> { userIds, roleIds }, held while the admin is still
+// picking users/roles in step 1 of /tracker-start.
+const pendingTrackerSelection = new Map();
+
+// staffUserId -> final deduplicated array of member IDs, held between the
+// "Continue" button (end of step 1) and the channel-ID modal step of
+// /tracker-start. In-memory only — if the bot restarts mid-setup, the
+// admin just has to run it again.
 const pendingTrackerSetup = new Map();
 
 const LOCK_PERMS = ["SendMessages"];
@@ -104,9 +114,41 @@ client.on("interactionCreate", async i => {
     return;
   }
 
-  // ---- Tracker: user select step (/tracker-start step 1) ----
-  if (i.isUserSelectMenu() && i.customId === "tracker_select_users") {
-    pendingTrackerSetup.set(i.user.id, i.values);
+  // ---- Tracker: step 1 selects — users and/or roles (/tracker-start) ----
+  if ((i.isUserSelectMenu() && i.customId === "tracker_select_users") ||
+      (i.isRoleSelectMenu() && i.customId === "tracker_select_roles")) {
+    const selection = pendingTrackerSelection.get(i.user.id) || { userIds: [], roleIds: [] };
+    if (i.customId === "tracker_select_users") selection.userIds = i.values;
+    else selection.roleIds = i.values;
+    pendingTrackerSelection.set(i.user.id, selection);
+
+    return i.update({
+      content: buildTrackerStepOneContent(i.guild, selection),
+      components: buildTrackerStepOneComponents()
+    });
+  }
+
+  // ---- Tracker: step 1 cancel (/tracker-start) ----
+  if (i.isButton() && i.customId === "tracker_cancel") {
+    pendingTrackerSelection.delete(i.user.id);
+    return i.update({ content: "❌ Tracker setup cancelled.", components: [] });
+  }
+
+  // ---- Tracker: step 1 continue -> step 2 channel modal (/tracker-start) ----
+  if (i.isButton() && i.customId === "tracker_continue") {
+    const selection = pendingTrackerSelection.get(i.user.id) || { userIds: [], roleIds: [] };
+    const mergedIds = [...mergeTrackerSelectionIntoIds(i.guild, selection)];
+
+    if (!mergedIds.length) {
+      return i.reply({
+        content: "❌ Select at least one user, or a role that has members, before continuing.",
+        ephemeral: true
+      });
+    }
+
+    pendingTrackerSelection.delete(i.user.id);
+    pendingTrackerSetup.set(i.user.id, mergedIds);
+
     const modal = new ModalBuilder().setCustomId("tracker_channel_modal").setTitle("Tracker channel");
     modal.addComponents(new ActionRowBuilder().addComponents(
       new TextInputBuilder()
@@ -912,38 +954,6 @@ client.on("messageCreate", async message => {
 
     const roast = ROASTS[Math.floor(Math.random() * ROASTS.length)];
     return message.channel.send({ content: `${target} ${roast}` });
-  }
-
-  if (cmd === "purge") {
-    const canPurge = message.member.permissions.has(PermissionsBitField.Flags.Administrator);
-    if (!canPurge) return message.reply({ content: "No permission." });
-
-    const amountArg = message.content.trim().split(/\s+/)[1];
-    const amount = parseInt(amountArg, 10);
-
-    if (!amountArg || isNaN(amount) || amount < 1) {
-      return message.reply({ content: "Usage: `,purge <amount>` — pick a number between 1 and 100." });
-    }
-    if (amount > 100) {
-      return message.reply({ content: "❌ 100 is the max you can purge at once." });
-    }
-
-    try {
-      // +1 also removes the ,purge command message itself.
-      // `true` = skip messages older than 14 days instead of throwing,
-      // since Discord won't let bots bulk-delete those.
-      const deleted = await message.channel.bulkDelete(amount + 1, true);
-      const actualDeleted = Math.max(deleted.size - 1, 0); // don't count the ,purge message itself
-      const note = actualDeleted < amount
-        ? " (some were skipped — Discord won't let bots bulk-delete messages older than 14 days)"
-        : "";
-      const confirmation = await message.channel.send({ content: `🧹 Deleted **${actualDeleted}** message(s).${note}` });
-      setTimeout(() => confirmation.delete().catch(() => {}), 5000);
-    } catch (err) {
-      console.error(",purge: failed to bulk delete:", err);
-      await message.channel.send({ content: "❌ Something went wrong deleting messages. Make sure I have the **Manage Messages** permission in this channel." });
-    }
-    return;
   }
 });
 
