@@ -913,6 +913,38 @@ client.on("messageCreate", async message => {
     const roast = ROASTS[Math.floor(Math.random() * ROASTS.length)];
     return message.channel.send({ content: `${target} ${roast}` });
   }
+
+  if (cmd === "purge") {
+    const canPurge = message.member.permissions.has(PermissionsBitField.Flags.Administrator);
+    if (!canPurge) return message.reply({ content: "No permission." });
+
+    const amountArg = message.content.trim().split(/\s+/)[1];
+    const amount = parseInt(amountArg, 10);
+
+    if (!amountArg || isNaN(amount) || amount < 1) {
+      return message.reply({ content: "Usage: `,purge <amount>` — pick a number between 1 and 100." });
+    }
+    if (amount > 100) {
+      return message.reply({ content: "❌ 100 is the max you can purge at once." });
+    }
+
+    try {
+      // +1 also removes the ,purge command message itself.
+      // `true` = skip messages older than 14 days instead of throwing,
+      // since Discord won't let bots bulk-delete those.
+      const deleted = await message.channel.bulkDelete(amount + 1, true);
+      const actualDeleted = Math.max(deleted.size - 1, 0); // don't count the ,purge message itself
+      const note = actualDeleted < amount
+        ? " (some were skipped — Discord won't let bots bulk-delete messages older than 14 days)"
+        : "";
+      const confirmation = await message.channel.send({ content: `🧹 Deleted **${actualDeleted}** message(s).${note}` });
+      setTimeout(() => confirmation.delete().catch(() => {}), 5000);
+    } catch (err) {
+      console.error(",purge: failed to bulk delete:", err);
+      await message.channel.send({ content: "❌ Something went wrong deleting messages. Make sure I have the **Manage Messages** permission in this channel." });
+    }
+    return;
+  }
 });
 
 // =====================================================================
