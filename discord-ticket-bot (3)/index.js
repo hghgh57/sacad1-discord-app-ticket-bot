@@ -66,6 +66,21 @@ const client = new Client({
 });
 
 // =====================================================================
+// CRASH GUARDS
+// discord.js emits an "error" event on the client for things like a
+// modal shown on an interaction that already expired (10062 Unknown
+// interaction) or a reply sent twice (40060 already acknowledged) —
+// totally normal, everyday timing hiccups, NOT bugs worth taking the
+// whole bot down for. With no listener attached, Node's default
+// behaviour for an unhandled "error" event is to crash the process,
+// which is what was killing ,lock/,unlock/close: one bad interaction
+// anywhere would kill the entire bot mid-command. These two listeners
+// just log the error instead of crashing, so one flaky interaction
+// can't take every other command down with it.
+client.on("error", err => console.error("Discord client error:", err));
+process.on("unhandledRejection", err => console.error("Unhandled rejection:", err));
+
+// =====================================================================
 // COMMAND LOADER
 // Drop a new file in ./commands (exporting { data, execute }) and it's
 // picked up automatically — no need to touch this file. Remember to run
@@ -938,6 +953,37 @@ client.on("messageCreate", async message => {
     }
 
     return channel.send({ content: `🔓 ${channel} was unlocked by ${message.author}` });
+  }
+
+  if (cmd === "purge") {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return message.reply({ content: "No permission." });
+    }
+
+    const arg = message.content.slice(1).trim().split(/\s+/)[1];
+    const requested = parseInt(arg, 10);
+    if (!arg || isNaN(requested) || requested < 1) {
+      return message.reply({ content: "Usage: `,purge <amount>` — amount must be between 1 and 100." });
+    }
+    const amount = Math.min(requested, 100);
+
+    let deleted;
+    try {
+      // +1 to also remove the ",purge" command message itself.
+      // The `true` filters out anything older than 14 days instead of
+      // throwing — Discord's bulk-delete API can't touch those at all.
+      deleted = await message.channel.bulkDelete(amount + 1, true);
+    } catch (err) {
+      console.error(",purge failed:", err);
+      return message.reply({ content: "Couldn't delete those messages — check my Manage Messages permission." });
+    }
+
+    const count = Math.max(deleted.size - 1, 0); // don't count the command message itself
+    const notice = await message.channel.send({
+      content: `🧹 Deleted ${count} message(s)${requested > 100 ? " (capped at 100 max)" : ""} — ${message.author}`
+    });
+    setTimeout(() => notice.delete().catch(() => {}), 4000);
+    return;
   }
 
   if (cmd === "roast") {
