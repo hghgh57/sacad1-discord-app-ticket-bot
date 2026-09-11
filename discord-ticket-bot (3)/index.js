@@ -849,7 +849,8 @@ client.on("messageCreate", async message => {
     return message.reply({ content: `😴 You're now AFK: ${reason}` });
   }
 
-  const [cmd] = message.content.slice(1).trim().split(/\s+/);
+  const [rawCmd] = message.content.slice(1).trim().split(/\s+/);
+  const cmd = (rawCmd || "").toLowerCase();
 
   if (cmd === "s") {
     if (!isStaff(message.member)) return message.reply({ content: "No permission." });
@@ -927,13 +928,22 @@ client.on("messageCreate", async message => {
     const snapshot = getLockSnapshot(channel.id);
     deleteLockSnapshot(channel.id);
 
+    // Track failures instead of silently swallowing them — an edit failing
+    // (bot's role below the target role/member, or missing Manage Roles)
+    // used to still end in a cheerful "was unlocked" message even though
+    // nothing actually changed.
+    const failed = [];
+
     if (snapshot) {
       for (const { id, type, prev } of snapshot) {
         // type may be undefined on snapshots saved before this fix — fall
         // back to role (0), which covers the common case (@everyone/staff roles).
-        await channel.permissionOverwrites.edit(id, prev, { type: type ?? 0 }).catch(err => {
+        try {
+          await channel.permissionOverwrites.edit(id, prev, { type: type ?? 0 });
+        } catch (err) {
           console.error(`,unlock: failed to restore overwrite ${id} in #${channel.name}:`, err);
-        });
+          failed.push(id);
+        }
       }
     } else {
       // No saved snapshot — either this channel was never locked via ,lock,
@@ -943,13 +953,27 @@ client.on("messageCreate", async message => {
       // current overwrite, not just @everyone.
       const current = [...channel.permissionOverwrites.cache.values()];
       for (const ow of current) {
-        await channel.permissionOverwrites.edit(ow.id, { SendMessages: null }, { type: ow.type }).catch(err => {
+        try {
+          await channel.permissionOverwrites.edit(ow.id, { SendMessages: null }, { type: ow.type });
+        } catch (err) {
           console.error(`,unlock (no snapshot): failed to clear overwrite ${ow.id} in #${channel.name}:`, err);
-        });
+          failed.push(ow.id);
+        }
       }
       if (!current.some(ow => ow.id === everyoneId)) {
-        await channel.permissionOverwrites.edit(everyoneId, { SendMessages: null }, { type: 0 }).catch(() => {});
+        try {
+          await channel.permissionOverwrites.edit(everyoneId, { SendMessages: null }, { type: 0 });
+        } catch (err) {
+          console.error(`,unlock (no snapshot): failed to clear @everyone in #${channel.name}:`, err);
+          failed.push(everyoneId);
+        }
       }
+    }
+
+    if (failed.length) {
+      return channel.send({
+        content: `⚠️ ${channel} could NOT be fully unlocked — ${failed.length} overwrite(s) failed to update. This usually means my role needs to be moved higher in Server Settings > Roles (above the roles/members it's trying to edit), or I'm missing **Manage Roles**. See console for exact IDs.`
+      });
     }
 
     return channel.send({ content: `🔓 ${channel} was unlocked by ${message.author}` });
