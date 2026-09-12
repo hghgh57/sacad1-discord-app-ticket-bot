@@ -31,11 +31,10 @@ const { formatMoney } = require("./stats");
 //
 // Ping caveat: Discord only fires an @mention NOTIFICATION for a mention
 // sitting in a message's plain CONTENT — never for one inside an embed
-// (field name, field value, description, whatever). So everyone tracked
-// gets pinged ONCE, in the content line above the embed, when the tracker
-// is first created. After that, stat updates only edit the embed (never
-// the content), so nobody gets re-pinged just because their numbers changed
-// — same as before.
+// (field name, field value, description, whatever). This tracker message
+// has no mentions in its content at all, so creating/updating/stopping a
+// tracker never pings or DMs anyone — it's a purely visual, self-updating
+// embed.
 //
 // Embeds cap out at 25 fields. If a tracker somehow ends up with more than
 // 25 users (e.g. a big role was selected), only the first 25 get a field
@@ -170,12 +169,9 @@ async function createTracker(client, guild, channelId, userIds, createdBy) {
     stats: Object.fromEntries(userIds.map(id => [id, blankStats()]))
   };
 
-  // One message: everyone tracked gets pinged once in the content line
-  // (so they're notified their tracker started), with the single combined
-  // embed — one field per user — underneath.
-  const content = tracker.users.map(id => `<@${id}>`).join(" ") || undefined;
+  // Single message, no pings — just the one combined embed with everyone's
+  // own field inside it. Nobody gets DM'd/notified when the tracker starts.
   const message = await channel.send({
-    content,
     embeds: [await buildTrackerEmbed(client, tracker)]
   });
   tracker.messageId = message.id;
