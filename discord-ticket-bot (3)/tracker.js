@@ -15,8 +15,7 @@ const { formatMoney } = require("./stats");
 //   trackers: [
 //     {
 //       id, guildId, channelId, createdBy, createdAt, weekStart,
-//       headerMessageId,               // the top "overview" message — no pings in it
-//       userMessages: { [userId]: messageId }, // one message PER tracked user
+//       messageId,                     // the single tracker message (content + embed)
 //       users: [userId, ...],
 //       stats: { [userId]: { claims, closes, renames, sponsors } } // sponsors = $ total
 //     }
@@ -24,18 +23,26 @@ const { formatMoney } = require("./stats");
 //   lastResetDateKey: "YYYY-MM-DD" // Sydney-local date the weekly reset last ran, so we don't double-fire
 // }
 //
-// Why one message per user instead of one big embed with everyone in it:
-// Discord only fires an @mention NOTIFICATION for a mention sitting in a
-// message's plain CONTENT — never for one inside an embed (field name,
-// field value, description, whatever). So to actually ping someone right
-// at their own section of the tracker, that section has to BE its own
-// message, with the mention in its content and that user's stats in the
-// embed underneath it. The old design pinged everyone in one line at the
-// top of a single combined-embed message; this one pings each person
-// individually, right above their own card, and the top message carries
-// no pings at all.
+// ONE embed, everyone's own card inside it:
+// Everything lives in a single message — one embed with one field per
+// tracked user, so each person still gets their own little section (claims/
+// closes/renames/sponsored), it's just all inside the one embed instead of
+// spread across separate messages.
+//
+// Ping caveat: Discord only fires an @mention NOTIFICATION for a mention
+// sitting in a message's plain CONTENT — never for one inside an embed
+// (field name, field value, description, whatever). So everyone tracked
+// gets pinged ONCE, in the content line above the embed, when the tracker
+// is first created. After that, stat updates only edit the embed (never
+// the content), so nobody gets re-pinged just because their numbers changed
+// — same as before.
+//
+// Embeds cap out at 25 fields. If a tracker somehow ends up with more than
+// 25 users (e.g. a big role was selected), only the first 25 get a field
+// and a note is added saying the rest are tracked but not shown.
 // =====================================================================
 const DATA_FILE = path.join(__dirname, "data", "trackers.json");
+const MAX_FIELDS = 25;
 
 function load() {
   try {
@@ -65,11 +72,14 @@ function blankStats() {
 }
 
 // =====================================================================
-// EMBEDS
+// EMBED
 // =====================================================================
-function buildHeaderEmbed(tracker, { stopped = false } = {}) {
+function buildTrackerEmbed(tracker, { stopped = false } = {}) {
   const weekStartUnix = Math.floor(new Date(tracker.weekStart).getTime() / 1000);
-  return new EmbedBuilder()
+  const shown = tracker.users.slice(0, MAX_FIELDS);
+  const overflow = tracker.users.length - shown.length;
+
+  const embed = new EmbedBuilder()
     .setColor(stopped ? "#F04747" : "#8B5CF6")
     .setTitle(stopped ? "📊 Weekly Activity Tracker — Stopped" : "📊 Weekly Activity Tracker")
     .setDescription(
@@ -78,53 +88,41 @@ function buildHeaderEmbed(tracker, { stopped = false } = {}) {
     )
     .setFooter({ text: `Tracker ID: ${tracker.id}` })
     .setTimestamp();
+
+  for (const userId of shown) {
+    const s = tracker.stats[userId] || blankStats();
+    embed.addFields({
+      name: `<@${userId}>`,
+      value:
+        `🤝 Claims: **${s.claims}**\n` +
+        `🔒 Closes: **${s.closes}**\n` +
+        `✏️ Renames: **${s.renames}**\n` +
+        `💸 Sponsored: **$${formatMoney(s.sponsors)}**`,
+      inline: true
+    });
+  }
+
+  if (overflow > 0) {
+    embed.addFields({
+      name: "⚠️ Not shown",
+      value: `${overflow} more tracked user(s) — an embed can only display ${MAX_FIELDS} fields. Split this into more than one tracker to see everyone.`,
+      inline: false
+    });
+  }
+
+  return embed;
 }
 
-// Each user gets their own small card. Their name doesn't need to be
-// spelled out here — the real @mention above the embed (in that message's
-// content) already identifies whose section this is, and that's the part
-// that actually notifies them.
-function buildUserEmbed(tracker, userId, { stopped = false } = {}) {
-  const s = tracker.stats[userId] || blankStats();
-  return new EmbedBuilder()
-    .setColor(stopped ? "#F04747" : "#8B5CF6")
-    .setDescription(
-      `🤝 Claims: **${s.claims}**\n` +
-      `🔒 Closes: **${s.closes}**\n` +
-      `✏️ Renames: **${s.renames}**\n` +
-      `💸 Sponsored: **$${formatMoney(s.sponsors)}**`
-    )
-    .setFooter({ text: `Tracker ID: ${tracker.id}` });
-}
-
-async function refreshHeaderMessage(client, tracker, opts = {}) {
+async function refreshTrackerMessage(client, tracker, opts = {}) {
   try {
     const channel = await client.channels.fetch(tracker.channelId);
-    const message = await channel.messages.fetch(tracker.headerMessageId);
-    await message.edit({ embeds: [buildHeaderEmbed(tracker, opts)] });
+    const message = await channel.messages.fetch(tracker.messageId);
+    // Only the embed is touched — the content (the original pings) is left
+    // exactly as it was, so a stats update or a stop never re-pings anyone.
+    await message.edit({ embeds: [buildTrackerEmbed(tracker, opts)] });
   } catch {
-    console.warn(`⚠️  Couldn't refresh tracker ${tracker.id}'s header — its message or channel may have been deleted.`);
+    console.warn(`⚠️  Couldn't refresh tracker ${tracker.id} — its message or channel may have been deleted.`);
   }
-}
-
-// Refreshes just ONE user's card. This is the common case (a claim/close/
-// rename/sponsor just happened for one person) so it only costs one
-// message edit instead of touching everyone else's section too.
-async function refreshUserMessage(client, tracker, userId, opts = {}) {
-  const messageId = tracker.userMessages[userId];
-  if (!messageId) return;
-  try {
-    const channel = await client.channels.fetch(tracker.channelId);
-    const message = await channel.messages.fetch(messageId);
-    await message.edit({ embeds: [buildUserEmbed(tracker, userId, opts)] });
-  } catch {
-    console.warn(`⚠️  Couldn't refresh tracker ${tracker.id}'s card for user ${userId} — its message or channel may have been deleted.`);
-  }
-}
-
-async function refreshTrackerEmbed(client, tracker, opts = {}) {
-  await refreshHeaderMessage(client, tracker, opts);
-  await Promise.all(tracker.users.map(userId => refreshUserMessage(client, tracker, userId, opts)));
 }
 
 // =====================================================================
@@ -137,8 +135,7 @@ async function createTracker(client, guild, channelId, userIds, createdBy) {
     id: genId(),
     guildId: guild.id,
     channelId,
-    headerMessageId: null,
-    userMessages: {},
+    messageId: null,
     createdBy,
     createdAt: new Date().toISOString(),
     weekStart: new Date().toISOString(),
@@ -146,18 +143,15 @@ async function createTracker(client, guild, channelId, userIds, createdBy) {
     stats: Object.fromEntries(userIds.map(id => [id, blankStats()]))
   };
 
-  // Header first (no pings — just the overview), then one message per
-  // tracked user, each pinging that one person right above their own card.
-  const headerMessage = await channel.send({ embeds: [buildHeaderEmbed(tracker)] });
-  tracker.headerMessageId = headerMessage.id;
-
-  for (const userId of tracker.users) {
-    const userMessage = await channel.send({
-      content: `<@${userId}>`,
-      embeds: [buildUserEmbed(tracker, userId)]
-    });
-    tracker.userMessages[userId] = userMessage.id;
-  }
+  // One message: everyone tracked gets pinged once in the content line
+  // (so they're notified their tracker started), with the single combined
+  // embed — one field per user — underneath.
+  const content = tracker.users.map(id => `<@${id}>`).join(" ") || undefined;
+  const message = await channel.send({
+    content,
+    embeds: [buildTrackerEmbed(tracker)]
+  });
+  tracker.messageId = message.id;
 
   data.trackers.push(tracker);
   save();
@@ -178,10 +172,10 @@ async function stopTracker(client, id) {
   const [tracker] = data.trackers.splice(idx, 1);
   save();
 
-  // Just re-colors/re-titles the existing header + user cards to show the
-  // tracker is stopped — doesn't touch each message's content, so nobody
+  // Just re-colors/re-titles the existing message's embed to show the
+  // tracker is stopped — doesn't touch the message's content, so nobody
   // gets re-pinged just because the tracker ended.
-  await refreshTrackerEmbed(client, tracker, { stopped: true });
+  await refreshTrackerMessage(client, tracker, { stopped: true });
 
   return tracker;
 }
@@ -199,9 +193,9 @@ async function recordTrackerEvent(client, guildId, userId, field) {
   }
   save();
 
-  // Only that user's own card needs to change — no reason to touch anyone
-  // else's section (or re-ping anyone) over one person's event.
-  await Promise.all(relevant.map(t => refreshUserMessage(client, t, userId)));
+  // Re-render the one embed each relevant tracker lives in — no reason to
+  // touch the message content (and no re-ping) over one person's event.
+  await Promise.all(relevant.map(t => refreshTrackerMessage(client, t)));
 }
 
 async function recordTrackerSponsor(client, guildId, userId, amount) {
@@ -214,7 +208,7 @@ async function recordTrackerSponsor(client, guildId, userId, amount) {
   }
   save();
 
-  await Promise.all(relevant.map(t => refreshUserMessage(client, t, userId)));
+  await Promise.all(relevant.map(t => refreshTrackerMessage(client, t)));
 }
 
 // =====================================================================
@@ -256,13 +250,13 @@ async function performWeeklyReset(client) {
   for (const tracker of data.trackers) {
     try {
       const channel = await client.channels.fetch(tracker.channelId);
-      // Plain notice, no mentions — the per-user cards below just update
-      // in place, so nobody needs (or gets) pinged again for the reset.
+      // Plain notice, no mentions — the embed below just updates in place,
+      // so nobody needs (or gets) pinged again for the reset.
       await channel.send("📅 **Weekly reset** — everyone's stats below are back to 0 for the new week.").catch(() => {});
     } catch {
-      // channel gone — refreshTrackerEmbed below will just warn and move on
+      // channel gone — refreshTrackerMessage below will just warn and move on
     }
-    await refreshTrackerEmbed(client, tracker);
+    await refreshTrackerMessage(client, tracker);
   }
 }
 
