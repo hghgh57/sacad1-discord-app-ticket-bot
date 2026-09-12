@@ -1036,21 +1036,33 @@ client.on("messageCreate", async message => {
       return message.reply({ content: "No permission." });
     }
 
-    const target = message.mentions.users.first();
-    if (!target) {
-      return message.reply({ content: "Usage: `,dm @user <message>`" });
+    // Accept either an @mention or a raw user ID as the first argument.
+    const args = message.content.slice(1).trim().split(/\s+/); // ["dm", "<target>", ...rest]
+    const rawTarget = args[1];
+    const mentioned = message.mentions.users.first();
+    const idMatch = rawTarget && rawTarget.match(/^(?:<@!?(\d+)>|(\d{15,25}))$/);
+    const targetId = mentioned?.id || (idMatch ? (idMatch[1] || idMatch[2]) : null);
+
+    if (!targetId) {
+      return message.reply({ content: "Usage: `,dm @user <message>` or `,dm <user id> <message>`" });
     }
 
-    // Strip the leading ",dm" and the first mention (in whatever form it
-    // was typed — <@id> or <@!id>) out of the raw content, whatever's left
-    // is the message to send.
+    let target;
+    try {
+      target = await client.users.fetch(targetId);
+    } catch {
+      return message.reply({ content: `❌ Couldn't find a user with ID \`${targetId}\`.` });
+    }
+
+    // Strip the leading ",dm" and the target (mention OR raw ID, whichever
+    // was used) out of the raw content — whatever's left is the message.
     const body = message.content
       .slice(message.content.indexOf("dm") + 2)
-      .replace(/<@!?\d+>/, "")
+      .replace(/<@!?\d+>|\d{15,25}/, "")
       .trim();
 
     if (!body) {
-      return message.reply({ content: "You need to actually include a message. Usage: `,dm @user <message>`" });
+      return message.reply({ content: "You need to actually include a message. Usage: `,dm @user <message>` or `,dm <user id> <message>`" });
     }
 
     try {
