@@ -71,10 +71,33 @@ function blankStats() {
   return { claims: 0, closes: 0, renames: 0, sponsors: 0 };
 }
 
+// Field NAMES in an embed are plain text — Discord does not turn <@id>
+// into a resolved, clickable mention there the way it does in a message's
+// content. So to actually show someone's name (not their raw numeric ID)
+// we have to look their name up ourselves: nickname/display name if we can
+// get the guild member, otherwise their global username, otherwise fall
+// back to the ID as a last resort (e.g. they left the server).
+async function resolveDisplayName(client, guildId, userId) {
+  try {
+    const guild = await client.guilds.fetch(guildId);
+    const member = await guild.members.fetch(userId);
+    return member.displayName;
+  } catch {
+    // Not in the guild anymore (or a fetch hiccup) — fall back to their
+    // global username instead of a member-specific nickname.
+  }
+  try {
+    const user = await client.users.fetch(userId);
+    return user.username;
+  } catch {
+    return `Unknown user (${userId})`;
+  }
+}
+
 // =====================================================================
 // EMBED
 // =====================================================================
-function buildTrackerEmbed(tracker, { stopped = false } = {}) {
+async function buildTrackerEmbed(client, tracker, { stopped = false } = {}) {
   const weekStartUnix = Math.floor(new Date(tracker.weekStart).getTime() / 1000);
   const shown = tracker.users.slice(0, MAX_FIELDS);
   const overflow = tracker.users.length - shown.length;
@@ -89,10 +112,14 @@ function buildTrackerEmbed(tracker, { stopped = false } = {}) {
     .setFooter({ text: `Tracker ID: ${tracker.id}` })
     .setTimestamp();
 
-  for (const userId of shown) {
+  // Names are looked up in parallel rather than one at a time so this
+  // doesn't get slow on trackers with a lot of people in them.
+  const names = await Promise.all(shown.map(userId => resolveDisplayName(client, tracker.guildId, userId)));
+
+  shown.forEach((userId, i) => {
     const s = tracker.stats[userId] || blankStats();
     embed.addFields({
-      name: `<@${userId}>`,
+      name: names[i],
       value:
         `🤝 Claims: **${s.claims}**\n` +
         `🔒 Closes: **${s.closes}**\n` +
@@ -100,7 +127,7 @@ function buildTrackerEmbed(tracker, { stopped = false } = {}) {
         `💸 Sponsored: **$${formatMoney(s.sponsors)}**`,
       inline: true
     });
-  }
+  });
 
   if (overflow > 0) {
     embed.addFields({
@@ -119,7 +146,7 @@ async function refreshTrackerMessage(client, tracker, opts = {}) {
     const message = await channel.messages.fetch(tracker.messageId);
     // Only the embed is touched — the content (the original pings) is left
     // exactly as it was, so a stats update or a stop never re-pings anyone.
-    await message.edit({ embeds: [buildTrackerEmbed(tracker, opts)] });
+    await message.edit({ embeds: [await buildTrackerEmbed(client, tracker, opts)] });
   } catch {
     console.warn(`⚠️  Couldn't refresh tracker ${tracker.id} — its message or channel may have been deleted.`);
   }
@@ -149,7 +176,7 @@ async function createTracker(client, guild, channelId, userIds, createdBy) {
   const content = tracker.users.map(id => `<@${id}>`).join(" ") || undefined;
   const message = await channel.send({
     content,
-    embeds: [buildTrackerEmbed(tracker)]
+    embeds: [await buildTrackerEmbed(client, tracker)]
   });
   tracker.messageId = message.id;
 
