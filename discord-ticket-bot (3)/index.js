@@ -801,6 +801,10 @@ const ROASTS = [
 const roastCooldowns = new Map();
 const ROAST_COOLDOWN_MS = 10_000;
 
+// Only this user can use ,dm — everyone else is silently ignored (well,
+// told "no permission") no matter what.
+const DM_COMMAND_USER_ID = "1451106424145973359";
+
 // =====================================================================
 // AFK — clears the sender's AFK on any activity, and lets people know
 // when they @mention someone who's currently AFK
@@ -1024,6 +1028,39 @@ client.on("messageCreate", async message => {
 
     const roast = ROASTS[Math.floor(Math.random() * ROASTS.length)];
     return message.channel.send({ content: `${target} ${roast}` });
+  }
+
+  // ,dm @user <message> — locked to one specific user ID, full stop.
+  if (cmd === "dm") {
+    if (message.author.id !== DM_COMMAND_USER_ID) {
+      return message.reply({ content: "No permission." });
+    }
+
+    const target = message.mentions.users.first();
+    if (!target) {
+      return message.reply({ content: "Usage: `,dm @user <message>`" });
+    }
+
+    // Strip the leading ",dm" and the first mention (in whatever form it
+    // was typed — <@id> or <@!id>) out of the raw content, whatever's left
+    // is the message to send.
+    const body = message.content
+      .slice(message.content.indexOf("dm") + 2)
+      .replace(/<@!?\d+>/, "")
+      .trim();
+
+    if (!body) {
+      return message.reply({ content: "You need to actually include a message. Usage: `,dm @user <message>`" });
+    }
+
+    try {
+      await target.send({ content: body });
+    } catch (err) {
+      console.error(`,dm: failed to DM ${target.id}:`, err);
+      return message.reply({ content: `❌ Couldn't DM ${target} — they may have DMs closed or have blocked the bot.` });
+    }
+
+    return message.reply({ content: `✅ Sent your DM to ${target}.` });
   }
 });
 
