@@ -55,6 +55,56 @@ function isServiceChannel(channel) {
   return Object.values(config.serviceCategories).includes(channel.parentId);
 }
 
+// A ticket channel this bot actually created always has its opener's user
+// ID set as the channel topic (same check /close and /ticket-rename use).
+function isTicketChannel(channel) {
+  const inTicketCategory = channel.parentId && (
+    Object.values(config.categories).includes(channel.parentId)
+    || Object.values(config.serviceCategories).includes(channel.parentId)
+    || channel.parentId === config.buyAd.category
+  );
+  return inTicketCategory && /^\d{15,25}$/.test(channel.topic || "");
+}
+
+// Shared by the normal Close button/modal flow AND ,requestclose's Accept
+// button — builds/sends the transcript, DMs the opener, logs it, and
+// deletes the channel. Everything else (the initial ack, permission
+// checks) is handled by whichever flow calls this.
+async function performTicketClose(guild, channel, closedByUser, reason) {
+  deleteClaim(channel.id);
+  recordClose(closedByUser.id);
+  refreshCard(client, closedByUser.id).catch(() => {});
+  recordTrackerEvent(client, guild.id, closedByUser.id, "closes").catch(() => {});
+
+  try {
+    const { content, filename } = await buildTranscript(channel, reason);
+
+    const openerId = channel.topic;
+    const opener = await client.users.fetch(openerId).catch(() => null);
+    if (opener) {
+      await opener.send({
+        content: `📄 Here's the transcript for your ticket **#${channel.name}**.`,
+        files: [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
+      }).catch(() => {});
+    }
+
+    await logTicketEvent(
+      guild,
+      `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""}`,
+      "#F04747",
+      [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
+    );
+  } catch (err) {
+    console.error(`Failed to build/send transcript for #${channel.name}:`, err);
+    await logTicketEvent(guild, `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""} (⚠️ transcript failed — check logs)`, "#F04747");
+  }
+
+  setTimeout(() => channel.delete().catch(() => {}), 3000);
+}
+
+// Role allowed to use ,requestclose.
+const REQUEST_CLOSE_ROLE_ID = "1482008632747884736";
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -503,39 +553,31 @@ client.on("interactionCreate", async i => {
   if (i.isModalSubmit() && i.customId === "close_reason") {
     const reason = i.fields.getTextInputValue("reason")?.trim();
     await i.reply({ content: "Closing in 3 seconds..." });
+    await performTicketClose(i.guild, i.channel, i.user, reason);
+    return;
+  }
 
-    const channel = i.channel;
-    const openerId = channel.topic;
-    deleteClaim(channel.id);
-    recordClose(i.user.id);
-    refreshCard(client, i.user.id).catch(() => {});
-    recordTrackerEvent(client, i.guild.id, i.user.id, "closes").catch(() => {});
-
-    try {
-      const { content, filename } = await buildTranscript(channel, reason);
-
-      // DM the transcript to whoever opened the ticket
-      const opener = await client.users.fetch(openerId).catch(() => null);
-      if (opener) {
-        await opener.send({
-          content: `📄 Here's the transcript for your ticket **#${channel.name}**.`,
-          files: [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
-        }).catch(() => {});
-      }
-
-      // Post the transcript in the ticket log channel
-      await logTicketEvent(
-        i.guild,
-        `🔒 Ticket **#${channel.name}** closed by ${i.user}${reason ? `\n**Reason:** ${reason}` : ""}`,
-        "#F04747",
-        [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
-      );
-    } catch (err) {
-      console.error(`Failed to build/send transcript for #${channel.name}:`, err);
-      await logTicketEvent(i.guild, `🔒 Ticket **#${channel.name}** closed by ${i.user}${reason ? `\n**Reason:** ${reason}` : ""} (⚠️ transcript failed — check logs)`, "#F04747");
+  // ---- ,requestclose Accept/Deny buttons ----
+  if (i.isButton() && (i.customId.startsWith("reqclose_accept_") || i.customId.startsWith("reqclose_deny_"))) {
+    const openerId = i.channel.topic;
+    if (i.user.id !== openerId) {
+      return i.reply({ content: "This isn't for you — only the person who opened this ticket can respond.", ephemeral: true });
     }
 
-    setTimeout(() => channel.delete().catch(() => {}), 3000);
+    const accepted = i.customId.startsWith("reqclose_accept_");
+    const disabledRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("reqclose_accept_done").setLabel("Accept").setEmoji("✅").setStyle(ButtonStyle.Success).setDisabled(true),
+      new ButtonBuilder().setCustomId("reqclose_deny_done").setLabel("Deny").setEmoji("❌").setStyle(ButtonStyle.Secondary).setDisabled(true)
+    );
+
+    if (!accepted) {
+      await i.update({ components: [disabledRow] });
+      return i.followUp({ content: `${i.user} denied the request to close this ticket.` });
+    }
+
+    await i.update({ components: [disabledRow] });
+    await i.followUp({ content: `${i.user} agreed — closing in 3 seconds...` });
+    await performTicketClose(i.guild, i.channel, i.user, null);
     return;
   }
 
@@ -1139,6 +1181,29 @@ client.on("messageCreate", async message => {
     }
 
     return message.reply({ content: `🛑 Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
+  }
+
+  // ,requestclose — only REQUEST_CLOSE_ROLE_ID, only inside a ticket
+  // channel. Asks the ticket opener to agree via Accept/Deny buttons
+  // instead of closing it outright.
+  if (cmd === "requestclose") {
+    if (!message.member.roles.cache.has(REQUEST_CLOSE_ROLE_ID)) {
+      return message.reply({ content: "No permission." });
+    }
+    if (!isTicketChannel(message.channel)) {
+      return message.reply({ content: "This isn't a ticket channel." });
+    }
+
+    const openerId = message.channel.topic;
+    const embed = new EmbedBuilder()
+      .setColor("#F1C40F")
+      .setDescription(`<@${openerId}> ${message.author} has requested to close this ticket. Do you agree?`);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("reqclose_accept_").setLabel("Accept").setEmoji("✅").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("reqclose_deny_").setLabel("Deny").setEmoji("❌").setStyle(ButtonStyle.Secondary)
+    );
+
+    return message.channel.send({ content: `<@${openerId}>`, embeds: [embed], components: [row] });
   }
 });
 
