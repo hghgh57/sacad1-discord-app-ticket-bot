@@ -809,11 +809,11 @@ const DM_COMMAND_USER_ID = "1451106424145973359";
 const DM_COOLDOWN_MS = 60_000;
 let dmLastUsed = 0; // only one user can ever use this command, so a single shared timestamp is enough
 
-// This role (in addition to admins/bypass role via isAdmin) can use
-// ,advertise and ,adstop.
+// Only this role can use ,advertise and ,adstop — no admin/bypass-role
+// override, intentionally, so it's just this role and nothing else.
 const ADVERTISE_ROLE_ID = "1538332080469966998";
 function canAdvertise(member) {
-  return isAdmin(member) || member.roles.cache.has(ADVERTISE_ROLE_ID);
+  return member.roles.cache.has(ADVERTISE_ROLE_ID);
 }
 
 // =====================================================================
