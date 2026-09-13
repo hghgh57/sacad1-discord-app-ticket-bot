@@ -1138,7 +1138,7 @@ client.on("messageCreate", async message => {
       return message.reply({ content: `❌ No active campaign found with a target of ${target}.` });
     }
 
-    return message.reply({ content: ` Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
+    return message.reply({ content: `🛑 Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
   }
 });
 
