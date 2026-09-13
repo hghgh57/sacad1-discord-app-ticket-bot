@@ -7,13 +7,14 @@ const {
   AttachmentBuilder, ActivityType
 } = require("discord.js");
 const config = require("./config");
-const { isStaff, isBuildStaff } = require("./utils");
+const { isStaff, isBuildStaff, isAdmin } = require("./utils");
 const { tickets, sendTicketPanel, logTicketEvent, buildTranscript } = require("./tickets");
 const {
   serviceTickets, parseDimensions, calculateDigoutCost, formatPrice,
   sendServiceTicketPanel
 } = require("./service-tickets");
 const { sendWelcomeMessage } = require("./welcome");
+const { createCampaign, stopCampaignByTarget, handleMemberJoinAds } = require("./advertise");
 const {
   APPLICATION_TYPES, sessions,
   startApplication, cancelApplication, submitAnswer, sendApplicationPanel
@@ -652,6 +653,7 @@ client.on("interactionCreate", async i => {
 // =====================================================================
 client.on("guildMemberAdd", member => {
   sendWelcomeMessage(member).catch(err => console.error("Failed to send welcome message:", err));
+  handleMemberJoinAds(member).catch(err => console.error("Failed to send join ad(s):", err));
 });
 
 // =====================================================================
@@ -804,6 +806,15 @@ const ROAST_COOLDOWN_MS = 10_000;
 // Only this user can use ,dm — everyone else is silently ignored (well,
 // told "no permission") no matter what.
 const DM_COMMAND_USER_ID = "1451106424145973359";
+const DM_COOLDOWN_MS = 60_000;
+let dmLastUsed = 0; // only one user can ever use this command, so a single shared timestamp is enough
+
+// This role (in addition to admins/bypass role via isAdmin) can use
+// ,advertise and ,adstop.
+const ADVERTISE_ROLE_ID = "1538332080469966998";
+function canAdvertise(member) {
+  return isAdmin(member) || member.roles.cache.has(ADVERTISE_ROLE_ID);
+}
 
 // =====================================================================
 // AFK — clears the sender's AFK on any activity, and lets people know
@@ -1036,6 +1047,13 @@ client.on("messageCreate", async message => {
       return message.reply({ content: "No permission." });
     }
 
+    const now = Date.now();
+    const elapsed = now - dmLastUsed;
+    if (elapsed < DM_COOLDOWN_MS) {
+      const remaining = Math.ceil((DM_COOLDOWN_MS - elapsed) / 1000);
+      return message.reply({ content: `⏳ Slow down — try again in ${remaining}s.` });
+    }
+
     // Accept either an @mention or a raw user ID as the first argument.
     const args = message.content.slice(1).trim().split(/\s+/); // ["dm", "<target>", ...rest]
     const rawTarget = args[1];
@@ -1072,7 +1090,55 @@ client.on("messageCreate", async message => {
       return message.reply({ content: `❌ Couldn't DM ${target} — they may have DMs closed or have blocked the bot.` });
     }
 
+    dmLastUsed = Date.now();
     return message.reply({ content: `✅ Sent your DM to ${target}.` });
+  }
+
+  // ,advertise <count> <ad text> — starts a campaign: the next <count>
+  // people who JOIN this server get DM'd <ad text> the instant they join.
+  // Multiple campaigns can run at once.
+  if (cmd === "advertise") {
+    if (!canAdvertise(message.member)) {
+      return message.reply({ content: "No permission." });
+    }
+
+    const match = message.content.match(/^,advertise\s+(\d+)\s+([\s\S]+)$/i);
+    if (!match) {
+      return message.reply({ content: "Usage: `,advertise <count> <ad text>` — e.g. `,advertise 20 Check out our giveaway!`" });
+    }
+    const target = parseInt(match[1], 10);
+    const text = match[2].trim();
+
+    if (target <= 0) {
+      return message.reply({ content: "Usage: `,advertise <count> <ad text>` — e.g. `,advertise 20 Check out our giveaway!`" });
+    }
+    if (!text) {
+      return message.reply({ content: "You need to include the ad text. Usage: `,advertise <count> <ad text>`" });
+    }
+
+    createCampaign(message.guild.id, message.author.id, target, text);
+    return message.reply({ content: `✅ Started an ad campaign — the next **${target}** members to join will be DM'd that message.` });
+  }
+
+  // ,adstop <count> — stops the active campaign that was started with that
+  // target count, and reports how many it actually managed to send.
+  if (cmd === "adstop") {
+    if (!canAdvertise(message.member)) {
+      return message.reply({ content: "No permission." });
+    }
+
+    const args = message.content.slice(1).trim().split(/\s+/);
+    const target = parseInt(args[1], 10);
+    if (!Number.isInteger(target) || target <= 0) {
+      return message.reply({ content: "Usage: `,adstop <count>` — the same count you started the campaign with, e.g. `,adstop 20`" });
+    }
+
+    const campaign = stopCampaignByTarget(message.guild.id, target);
+    if (!campaign) {
+      return message.reply({ content: `❌ No active campaign found with a target of ${target}.` });
+    }
+
+    return message.reply({ content: `🛑 Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
   }
 });
 
