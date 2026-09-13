@@ -1091,7 +1091,7 @@ client.on("messageCreate", async message => {
     }
 
     dmLastUsed = Date.now();
-    return message.reply({ content: `✅ Sent your DM to ${target}.` });
+    return message.reply({ content: "Dm sent" });
   }
 
   // ,advertise <count> <ad text> — starts a campaign: the next <count>
@@ -1138,7 +1138,7 @@ client.on("messageCreate", async message => {
       return message.reply({ content: `❌ No active campaign found with a target of ${target}.` });
     }
 
-    return message.reply({ content: `🛑 Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
+    return message.reply({ content: ` Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
   }
 });
 
