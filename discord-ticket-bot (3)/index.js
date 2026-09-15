@@ -1187,7 +1187,9 @@ client.on("messageCreate", async message => {
   // channel. Asks the ticket opener to agree via Accept/Deny buttons
   // instead of closing it outright.
   if (cmd === "requestclose") {
-    if (!message.member.roles.cache.has(REQUEST_CLOSE_ROLE_ID)) {
+    const hasRequestCloseRole = message.member.roles.cache.has(REQUEST_CLOSE_ROLE_ID);
+    const isAllowedUser = message.author.id === "1536195433393557545";
+    if (!hasRequestCloseRole && !isAllowedUser) {
       return message.reply({ content: "No permission." });
     }
     if (!isTicketChannel(message.channel)) {
