@@ -1189,6 +1189,7 @@ client.on("messageCreate", async message => {
   if (cmd === "requestclose") {
     const hasRequestCloseRole = message.member.roles.cache.has(REQUEST_CLOSE_ROLE_ID);
     const isAllowedUser = message.author.id === "1536195433393557545";
+    console.log(`[requestclose] author.id="${message.author.id}" hasRole=${hasRequestCloseRole} isAllowedUser=${isAllowedUser}`);
     if (!hasRequestCloseRole && !isAllowedUser) {
       return message.reply({ content: "No permission." });
     }
