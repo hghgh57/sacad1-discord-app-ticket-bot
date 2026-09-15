@@ -104,6 +104,7 @@ async function performTicketClose(guild, channel, closedByUser, reason) {
 
 // Role allowed to use ,requestclose.
 const REQUEST_CLOSE_ROLE_ID = "1482008632747884736";
+const REQUEST_CLOSE_ROLE_ID_2 = "1536195433393557545";
 
 const client = new Client({
   intents: [
@@ -1187,10 +1188,10 @@ client.on("messageCreate", async message => {
   // channel. Asks the ticket opener to agree via Accept/Deny buttons
   // instead of closing it outright.
   if (cmd === "requestclose") {
-    const hasRequestCloseRole = message.member.roles.cache.has(REQUEST_CLOSE_ROLE_ID);
-    const isAllowedUser = message.author.id === "1536195433393557545";
-    console.log(`[requestclose] author.id="${message.author.id}" hasRole=${hasRequestCloseRole} isAllowedUser=${isAllowedUser}`);
-    if (!hasRequestCloseRole && !isAllowedUser) {
+    const hasRequestCloseRole =
+      message.member.roles.cache.has(REQUEST_CLOSE_ROLE_ID) ||
+      message.member.roles.cache.has(REQUEST_CLOSE_ROLE_ID_2);
+    if (!hasRequestCloseRole) {
       return message.reply({ content: "No permission." });
     }
     if (!isTicketChannel(message.channel)) {
