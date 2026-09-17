@@ -1,10 +1,8 @@
-const { EmbedBuilder } = require("discord.js");
-
 // =====================================================================
 // STICKY MESSAGES
-// /sticky posts a message that stays at the bottom of the channel:
-// every time someone else sends a message, the old sticky is deleted
-// and a fresh copy is posted underneath it. /unstick removes it.
+// /sticky posts a plain-text message that stays at the bottom of the
+// channel: every time someone else sends a message, the old sticky is
+// deleted and a fresh copy is posted underneath it. /unstick removes it.
 //
 // Storage is in-memory only (a Map), so stickies are lost on restart —
 // re-run /sticky after a restart if you need them to persist.
@@ -13,18 +11,11 @@ const { EmbedBuilder } = require("discord.js");
 // channelId -> { content, messageId, posting, pending }
 const stickies = new Map();
 
-function buildStickyEmbed(content) {
-  return new EmbedBuilder()
-    .setColor("#8B5CF6")
-    .setDescription(content)
-    .setFooter({ text: "📌 Sticky Message" });
-}
-
 async function setSticky(channel, content) {
   // Replace any existing sticky in this channel first.
   await removeSticky(channel);
 
-  const message = await channel.send({ embeds: [buildStickyEmbed(content)] });
+  const message = await channel.send({ content });
   stickies.set(channel.id, { content, messageId: message.id, posting: false, pending: false });
   return message;
 }
@@ -53,7 +44,7 @@ async function repost(channel, sticky) {
     const old = await channel.messages.fetch(sticky.messageId).catch(() => null);
     if (old) await old.delete().catch(() => {});
 
-    const fresh = await channel.send({ embeds: [buildStickyEmbed(sticky.content)] });
+    const fresh = await channel.send({ content: sticky.content });
     sticky.messageId = fresh.id;
   } catch (err) {
     console.error(`Failed to repost sticky in #${channel?.name}:`, err);
