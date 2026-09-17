@@ -1,5 +1,6 @@
 const {
-  EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, TextInputStyle
+  EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, TextInputStyle,
+  ContainerBuilder, TextDisplayBuilder, MessageFlags
 } = require("discord.js");
 const config = require("./config");
 
@@ -70,25 +71,35 @@ function formatPrice(n) {
 }
 
 async function sendServiceTicketPanel(channel) {
-  const e = new EmbedBuilder()
-    .setColor("#8B5CF6")
-    .setTitle("🛠️ Order a build ticket")
-    .setDescription(
-      "⛏️ **Digout Ticket**\n" +
-      "Please provide L x W x H dimensions.\n\n" +
-      "🏗️ **Base Building Ticket**\n" +
-      "Open a ticket if you need a base built from a schematic.\n" +
-      "Send the schematic file or link.\n\n" +
-      "⚡ **Rush Priority**\n" +
-      "+20% extra for priority queue\n\n" +
-      "Please note all payments go though IGN : SacService\n" +
-      "Never discuss in DMs"
-    );
-  const m = new StringSelectMenuBuilder().setCustomId("service_ticket").setPlaceholder("Select...")
+  const menu = new StringSelectMenuBuilder().setCustomId("service_ticket").setPlaceholder("Select...")
     .addOptions(Object.entries(serviceTickets).map(([k, v]) => ({
       label: v.label, value: k, emoji: v.emoji, description: "Click on this option to create a ticket"
     })));
-  await channel.send({ embeds: [e], components: [new ActionRowBuilder().addComponents(m)] });
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x000000)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "# 🛠️ Order a build ticket\n" +
+        "⛏️ **Digout Ticket**\n" +
+        "Please provide L x W x H dimensions.\n\n" +
+        "🏗️ **Base Building Ticket**\n" +
+        "Open a ticket if you need a base built from a schematic.\n" +
+        "Send the schematic file or link.\n\n" +
+        "⚡ **Rush Priority**\n" +
+        "+20% extra for priority queue\n\n" +
+        "Please note all payments go though IGN : SacService\n" +
+        "Never discuss in DMs"
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(menu)
+    );
+
+  await channel.send({
+    flags: MessageFlags.IsComponentsV2,
+    components: [container]
+  });
 }
 
 module.exports = {
