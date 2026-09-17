@@ -1,6 +1,7 @@
 const {
   EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder,
-  ButtonBuilder, ButtonStyle
+  ButtonBuilder, ButtonStyle,
+  ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, MessageFlags
 } = require("discord.js");
 const config = require("./config");
 
@@ -177,32 +178,54 @@ async function finishApplication(user, session) {
   });
 }
 
-function buildApplicationPanelEmbed() {
-  return new EmbedBuilder()
-    .setColor("#8B5CF6")
-    .setTitle("Staff & Builder Application")
-    .setDescription(
-      "Sacad is looking for reliable and suited applicants to become a part of the staff team, but before applying for Staff or Builder, please make sure you meet the requirements below:\n\n" +
-      "👤 Must be 14+ years old\n" +
-      "💬 Must be active in the server\n" +
-      "🤝 Must be respectful to all members & staff\n" +
-      "🧠 Must be mature and able to handle drama/problems\n" +
-      "📖 Must know and follow all server rules\n" +
-      "📝 Must put effort into your application (no 1 word answers)\n" +
-      "💰 Must have money to buy/sell spawners if needed\n" +
-      "🪦 Must know basic server stuff (selling/buying skeleton spawners, support, etc.)\n" +
-      "🚫 Must not have recent punishments or warnings\n" +
-      "📸 Must have screenshots of previous builds (builder only)\n" +
-      "⚖️ Must not scam, grief, or abuse your power over others\n" +
-      "🏗️ Must have experience building on DonutSMP (builders only)\n" +
-      "⭐ Must provide vouches from previous customers (screenshots or usernames - builders only)\n" +
-      "📐 Must know how to use schematics/Litematica if required (builders only)\n" +
-      "🔒 Must keep customer bases confidential and delete homes when requested\n\n" +
-      "**Further notice:**\n" +
-      "❌ Asking for staff lowers your chances\n" +
-      "📩 DMing staff to check your application may result in denial\n" +
-      "🏆 Staff is chosen based on trust, activity, maturity & helpfulness\n" +
-      "⛔ Not everyone will be accepted"
+// Built as a Components V2 container (instead of a plain embed) so the
+// long requirements text can be split up with separators, and the
+// "apply_type" dropdown lives inside the same container at the bottom.
+function buildApplicationPanelContainer(menu) {
+  return new ContainerBuilder()
+    .setAccentColor(0x000000)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "# Staff & Builder Application\n" +
+        "Sacad is looking for reliable and suited applicants to become a part of the staff team, but before applying for Staff or Builder, please make sure you meet the requirements below:"
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "- Must be 14+ years old\n" +
+        "- Must be active in the server\n" +
+        "- Must be respectful to all members & staff\n" +
+        "- Must be mature and able to handle drama/problems\n" +
+        "- Must know and follow all server rules\n" +
+        "- Must put effort into your application (no 1 word answers)\n" +
+        "- Must have money to buy/sell spawners if needed\n" +
+        "- Must know basic server stuff (selling/buying skeleton spawners, support, etc.)\n" +
+        "- Must not have recent punishments or warnings\n" +
+        "- Must have screenshots of previous builds (builder only)\n" +
+        "- Must not scam, grief, or abuse your power over others\n" +
+        "- Must have experience building on DonutSMP (builders only)\n" +
+        "- Must provide vouches from previous customers (screenshots or usernames - builders only)\n" +
+        "- Must know how to use schematics/Litematica if required (builders only)\n" +
+        "- Must keep customer bases confidential and delete homes when requested"
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "**Further notice:**\n" +
+        "- Asking for staff lowers your chances\n" +
+        "- DMing staff to check your application may result in denial\n" +
+        "- Staff is chosen based on trust, activity, maturity & helpfulness\n" +
+        "- Not everyone will be accepted"
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(menu)
     );
 }
 
@@ -212,7 +235,10 @@ async function sendApplicationPanel(channel) {
   if (config.applicationsEnabled.builder) options.push({ label: "Builder Applications", value: "builder", emoji: "🏗️" });
   if (!options.length) return false;
   const menu = new StringSelectMenuBuilder().setCustomId("apply_type").setPlaceholder("Select an application type...").addOptions(options);
-  await channel.send({ embeds: [buildApplicationPanelEmbed()], components: [new ActionRowBuilder().addComponents(menu)] });
+  await channel.send({
+    flags: MessageFlags.IsComponentsV2,
+    components: [buildApplicationPanelContainer(menu)]
+  });
   return true;
 }
 
