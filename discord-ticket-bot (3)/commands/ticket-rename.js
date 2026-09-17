@@ -36,6 +36,6 @@ module.exports = {
     await interaction.channel.setName(newName, `Renamed by ${interaction.user.tag}`);
     recordRename(interaction.user.id);
     recordTrackerEvent(interaction.client, interaction.guild.id, interaction.user.id, "renames").catch(() => {});
-    return interaction.reply({ content: `✅ Renamed this ticket to **${newName}**.` });
+    return interaction.reply({ content: ` ✏️Renamed this ticket to **${newName}**.` });
   }
 };
