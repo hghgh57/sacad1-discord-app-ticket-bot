@@ -1,4 +1,16 @@
-const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, TextInputStyle } = require("discord.js");
+const {
+  EmbedBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  TextInputStyle,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  MessageFlags
+} = require("discord.js");
 const config = require("./config");
 
 // =====================================================================
@@ -63,14 +75,78 @@ const tickets = {
   }
 };
 
+// =====================================================================
+// TICKET PANEL
+// Sent as a Components V2 message (Container + separators) instead of a
+// plain embed, so it can hold long formatted rules text with dividers.
+// The select menu lives inside the same container, at the bottom.
+// =====================================================================
 async function sendTicketPanel(channel) {
-  const e = new EmbedBuilder()
-    .setColor("#8B5CF6")
-    .setTitle("Tickets")
-    .setDescription("Below is a drop down menu to create support tickets and for market tickets  Make sure to read the Ticket rules above ^");
-  const m = new StringSelectMenuBuilder().setCustomId("ticket").setPlaceholder("Select...")
-    .addOptions(Object.entries(tickets).map(([k, v]) => ({ label: v.label, value: k, emoji: v.emoji, description: "Click on this option to create a ticket" })));
-  await channel.send({ embeds: [e], components: [new ActionRowBuilder().addComponents(m)] });
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("ticket")
+    .setPlaceholder("Select...")
+    .addOptions(Object.entries(tickets).map(([k, v]) => ({
+      label: v.label,
+      value: k,
+      emoji: v.emoji,
+      description: "Click on this option to create a ticket"
+    })));
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x000000)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "# 🎫 WHAT TO OPEN A TICKET FOR :\n" +
+        "- Buying or selling Skeleton Spawners.(Please check ⁠#『🦴』➺spawner-prices before opening a ticket about Skeleton Spawners.)\n\n" +
+        "- Claiming a giveaway prize.\n\n" +
+        "- General support or questions.\n\n" +
+        "- Reporting a member for breaking server rules.(Server issues only — NOT DonutSMP related.)\n\n" +
+        "- Sponsoring a giveaway.\n\n" +
+        "- Partnership requests.(Please check ⁠<#1480179580995375187> before opening a partnership ticket.)\n\n" +
+        "- Other server-related help."
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "**⚠️ We are NOT DonutSMP staff.**\n" +
+        "Please do not open tickets for DonutSMP issues."
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## ❌ DO NOT OPEN A TICKET FOR :\n" +
+        "**(Doing any of these may result in a timeout.)**\n\n" +
+        "- Trolling or wasting staff time.\n" +
+        "- Spam opening tickets.\n" +
+        "- Begging for money/items.\n" +
+        "- Fake reports or unnecessary tickets."
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## 📝 IMPORTANT NOTES :\n" +
+        "Staff will NEVER privately DM you first.\n" +
+        "Please be patient while waiting for staff responses.\n" +
+        "Do not ping staff repeatedly in tickets."
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(menu)
+    );
+
+  await channel.send({
+    flags: MessageFlags.IsComponentsV2,
+    components: [container]
+  });
 }
 
 // =====================================================================
