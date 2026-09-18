@@ -61,7 +61,7 @@ async function sendIGNPanel(channel) {
       "Press the button below and enter your exact Minecraft IGN. It will be saved and added to your server nickname.\n" +
       "You can press the button again to update it."
     )
-    .setFooter({ text: "IGN must be 3-16 letters, numbers, or underscores (Bedrock players: add a leading .)" });
+    .setFooter({ text: "IGN must be 3-16 letters, numbers, underscores, or periods" });
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("link_ign").setLabel("Link IGN").setStyle(ButtonStyle.Primary)
