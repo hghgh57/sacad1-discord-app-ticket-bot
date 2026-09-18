@@ -15,6 +15,7 @@ module.exports = {
   // See utils.js (isStaff/isBuildStaff/isAdmin) for where this is checked.
   fullAccessRole: "1455703614432481485",
   ticketLogChannel: "1477059741657206934", // where ticket opened/claimed/closed events get logged. Leave as-is (or "") to disable logging.
+  ignLogChannel: "1480429965873778738", // where IGN link/update/remove events get logged.
   // Tickets with no new messages for this long get closed automatically
   // (transcript DM'd to the opener + logged, same as a normal close, just
   // labelled "Auto Closed" / "Inactive for N days"). Digout/base building
