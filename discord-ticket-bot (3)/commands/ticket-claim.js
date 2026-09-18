@@ -79,7 +79,7 @@ module.exports = {
         const e = EmbedBuilder.from(card.embeds[0]).setFooter({ text: `Claimed by ${interaction.user.tag}` });
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId("unclaim").setLabel("Unclaim").setEmoji("🔓").setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+          new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
         );
         await card.edit({ embeds: [e], components: [row] });
       }
