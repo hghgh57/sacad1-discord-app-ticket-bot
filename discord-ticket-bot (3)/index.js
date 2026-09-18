@@ -861,7 +861,7 @@ client.on("interactionCreate", async i => {
 
     const member = i.member;
     const baseName = member.displayName.replace(/\s*\[.+\]$/, "").trim();
-    await member.setNickname(`${baseName} [${ign}]`).catch(() => {});
+    const renamed = await member.setNickname(`${baseName} [${ign}]`).then(() => true).catch(() => false);
 
     await logIGNEvent(i.guild, {
       action: previousIgn ? "Updated" : "Linked",
@@ -870,6 +870,13 @@ client.on("interactionCreate", async i => {
       previousIgn,
       actionBy: i.user
     });
+
+    if (!renamed) {
+      return i.reply({
+        content: `Linked your IGN as \`${ign}\`, but I couldn't update your nickname — I probably don't have a high enough role to rename you (or you're the server owner).`,
+        ephemeral: true
+      });
+    }
 
     return i.reply({ content: `Linked your IGN as \`${ign}\`.`, ephemeral: true });
   }
