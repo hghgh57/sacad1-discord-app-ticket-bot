@@ -3,6 +3,7 @@ const { isBuildStaff } = require("../utils");
 const config = require("../config");
 const { recordTrackerEvent } = require("../tracker");
 const { recordRename } = require("../stats");
+const { logTicketEvent } = require("../tickets");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -36,6 +37,14 @@ module.exports = {
     await interaction.channel.setName(newName, `Renamed by ${interaction.user.tag}`);
     recordRename(interaction.user.id);
     recordTrackerEvent(interaction.client, interaction.guild.id, interaction.user.id, "renames").catch(() => {});
+    await logTicketEvent(interaction.guild, {
+      title: "Ticket Renamed",
+      ticketChannel: interaction.channel,
+      category: interaction.channel.parent?.name,
+      actionLabel: "Renamed by",
+      actionBy: interaction.user,
+      color: 0x5865F2
+    });
     return interaction.reply({ content: ` ✏️Renamed this ticket to **${newName}**.` });
   }
 };
