@@ -99,14 +99,17 @@ async function performTicketClose(guild, channel, closedByUser, reason, opts = {
       }).catch(() => {});
     }
 
-    await logTicketEvent(
-      guild,
-      auto
-        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for ${days} days**`
-        : `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""}`,
-      "#F04747",
-      [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
-    );
+    await logTicketEvent(guild, {
+      title: auto ? "Ticket Auto Closed" : "Ticket Closed",
+      ticketChannel: `#${channel.name}`,
+      category: channel.parent?.name,
+      openedBy: opener ? `<@${opener.id}>` : (openerId ? `<@${openerId}>` : "Unknown"),
+      actionLabel: "Closed by",
+      actionBy: closedByUser,
+      reason: auto ? `Inactive for ${days} days` : reason,
+      color: 0xF04747,
+      files: [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
+    });
   } catch (err) {
     // Code 10003 (Unknown Channel) / 50001 (Missing Access) mean the
     // channel is already gone on Discord's side — deleted manually or by
@@ -126,13 +129,17 @@ async function performTicketClose(guild, channel, closedByUser, reason, opts = {
     // you have to dig for, so surfacing it here means you can see exactly
     // why it failed without leaving Discord.
     const errText = (err?.message || String(err)).slice(0, 500);
-    await logTicketEvent(
-      guild,
-      auto
-        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for ${days} days**\n⚠️ Transcript failed: \`${errText}\``
-        : `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""}\n⚠️ Transcript failed: \`${errText}\``,
-      "#F04747"
-    );
+    const baseReason = auto ? `Inactive for ${days} days` : reason;
+    await logTicketEvent(guild, {
+      title: auto ? "Ticket Auto Closed" : "Ticket Closed",
+      ticketChannel: `#${channel.name}`,
+      category: channel.parent?.name,
+      openedBy: channel.topic ? `<@${channel.topic}>` : "Unknown",
+      actionLabel: "Closed by",
+      actionBy: closedByUser,
+      reason: `${baseReason ? `${baseReason}\n` : ""}⚠️ Transcript failed: \`${errText}\``,
+      color: 0xF04747
+    });
   }
 
   setTimeout(() => channel.delete().catch(() => {}), 3000);
@@ -440,7 +447,14 @@ client.on("interactionCreate", async i => {
       }
       await c.send({ content: `${i.user} <@&${config.buildTicketRole}>`, embeds: [emb], components: [row] });
 
-      await logTicketEvent(i.guild, `🎫 **${v.label}** ticket opened by ${i.user} — ${c}`);
+      await logTicketEvent(i.guild, {
+        title: "Ticket Opened",
+        ticketChannel: c,
+        category: c.parent?.name || v.label,
+        actionLabel: "Opened by",
+        actionBy: i.user,
+        color: 0x8B5CF6
+      });
       return i.reply({ content: `Created: ${c}`, ephemeral: true });
     } catch (err) {
       console.error(`Failed to create "${t}" service ticket for ${i.user.tag} (${i.user.id}):`, err);
@@ -503,7 +517,14 @@ client.on("interactionCreate", async i => {
         new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
       );
       await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
-      await logTicketEvent(i.guild, `🎫 **${v.label}** ticket opened by ${i.user} — ${c}`);
+      await logTicketEvent(i.guild, {
+        title: "Ticket Opened",
+        ticketChannel: c,
+        category: c.parent?.name || v.label,
+        actionLabel: "Opened by",
+        actionBy: i.user,
+        color: 0x8B5CF6
+      });
       return i.reply({ content: `Created: ${c}`, ephemeral: true });
     } catch (err) {
       console.error(`Failed to create "${t}" ticket for ${i.user.tag} (${i.user.id}):`, err);
@@ -542,7 +563,14 @@ client.on("interactionCreate", async i => {
         new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
       );
       await c.send({ content: `${i.user} ${config.buyAd.roles.map(r => `<@&${r}>`).join(" ")}`, embeds: [emb], components: [row] });
-      await logTicketEvent(i.guild, `🎫 **Buy Ad** ticket opened by ${i.user} — ${c}`);
+      await logTicketEvent(i.guild, {
+        title: "Ticket Opened",
+        ticketChannel: c,
+        category: c.parent?.name || "Buy Ad",
+        actionLabel: "Opened by",
+        actionBy: i.user,
+        color: 0x8B5CF6
+      });
       return i.editReply({ content: `Created: ${c}` });
     } catch (err) {
       console.error(`Failed to create buy ad ticket for ${i.user.tag} (${i.user.id}):`, err);
@@ -602,7 +630,14 @@ client.on("interactionCreate", async i => {
         new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
       );
       await i.update({ embeds: [e], components: [row] });
-      await logTicketEvent(i.guild, `🤝 Ticket **#${i.channel.name}** claimed by ${i.user}`);
+      await logTicketEvent(i.guild, {
+        title: "Ticket Claimed",
+        ticketChannel: i.channel,
+        category: i.channel.parent?.name,
+        actionLabel: "Claimed by",
+        actionBy: i.user,
+        color: 0x8B5CF6
+      });
       return i.followUp({ content: `Claimed by ${i.user}`, ephemeral: false });
     }
     if (i.customId == "unclaim") {
@@ -623,7 +658,14 @@ client.on("interactionCreate", async i => {
         new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
       );
       await i.update({ embeds: [e], components: [row] });
-      await logTicketEvent(i.guild, `🔓 Ticket **#${i.channel.name}** unclaimed by ${i.user}`);
+      await logTicketEvent(i.guild, {
+        title: "Ticket Unclaimed",
+        ticketChannel: i.channel,
+        category: i.channel.parent?.name,
+        actionLabel: "Unclaimed by",
+        actionBy: i.user,
+        color: 0xFAA61A
+      });
       return i.followUp({ content: `Unclaimed by ${i.user}`, ephemeral: false });
     }
     if (i.customId == "close") {
