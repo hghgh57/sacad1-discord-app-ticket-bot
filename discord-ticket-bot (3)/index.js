@@ -857,10 +857,15 @@ client.on("interactionCreate", async i => {
     }
 
     const previousIgn = getIGN(i.user.id);
-    setIGN(i.user.id, ign);
-
     const member = i.member;
     const baseName = member.displayName.replace(/\s*\[.+\]$/, "").trim();
+
+    // Only capture the original name the first time this user ever links —
+    // on later re-links (updating the IGN) we keep the name captured back
+    // then, so unlinking always restores the name from before any IGN was
+    // linked, not the "[OLD_IGN]" name from the update just before this one.
+    setIGN(i.user.id, ign, previousIgn ? null : baseName);
+
     const renamed = await member.setNickname(`${baseName} [${ign}]`).then(() => true).catch(() => false);
 
     await logIGNEvent(i.guild, {
