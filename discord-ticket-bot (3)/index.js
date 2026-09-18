@@ -68,14 +68,15 @@ function isTicketChannel(channel) {
 }
 
 // Shared by the normal Close button/modal flow, ,requestclose's Accept
-// button, AND the 5-day auto-close scheduler — builds/sends the transcript,
-// DMs the opener, logs it, and deletes the channel. Everything else (the
+// button, AND the auto-close scheduler — builds/sends the transcript, DMs
+// the opener, logs it, and deletes the channel. Everything else (the
 // initial ack, permission checks) is handled by whichever flow calls this.
-// Pass { auto: true } for an automatic inactivity close — swaps the DM/log
-// wording to "Auto Closed" / "Inactive for 5 days" and skips attributing a
-// staff "close" stat to whoever/whatever triggered it.
+// Pass { auto: true, days } for an automatic inactivity close — swaps the
+// DM/log wording to "Auto Closed" / "Inactive for N days" and skips
+// attributing a staff "close" stat to whoever/whatever triggered it.
 async function performTicketClose(guild, channel, closedByUser, reason, opts = {}) {
   const auto = !!opts.auto;
+  const days = opts.days;
   deleteClaim(channel.id);
   deleteActivity(channel.id);
   if (!auto) {
@@ -92,7 +93,7 @@ async function performTicketClose(guild, channel, closedByUser, reason, opts = {
     if (opener) {
       await opener.send({
         content: auto
-          ? `🔒 **Auto Closed**\n**Inactive for 5 days** — here's the transcript for your ticket **#${channel.name}**.`
+          ? `🔒 **Auto Closed**\n**Inactive for ${days} days** — here's the transcript for your ticket **#${channel.name}**.`
           : `📄 Here's the transcript for your ticket **#${channel.name}**.`,
         files: [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
       }).catch(() => {});
@@ -101,7 +102,7 @@ async function performTicketClose(guild, channel, closedByUser, reason, opts = {
     await logTicketEvent(
       guild,
       auto
-        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for 5 days**`
+        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for ${days} days**`
         : `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""}`,
       "#F04747",
       [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
@@ -111,7 +112,7 @@ async function performTicketClose(guild, channel, closedByUser, reason, opts = {
     await logTicketEvent(
       guild,
       auto
-        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for 5 days** (⚠️ transcript failed — check logs)`
+        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for ${days} days** (⚠️ transcript failed — check logs)`
         : `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""} (⚠️ transcript failed — check logs)`,
       "#F04747"
     );
@@ -121,23 +122,29 @@ async function performTicketClose(guild, channel, closedByUser, reason, opts = {
 }
 
 // =====================================================================
-// AUTO-CLOSE — scans every open ticket channel and closes any with no
-// activity for config.autoClose.inactivityMs (default 5 days). Activity is
-// tracked in ticketActivity.js, touched on ticket creation and on every
-// message sent in a ticket channel (see the messageCreate listener below).
-// If a ticket has no recorded activity at all (e.g. bot restarted and it's
-// an old entry), falls back to the channel's creation time.
+// AUTO-CLOSE — scans every open ticket channel and closes any that have
+// been inactive too long. Regular tickets (buying/selling/partnership/
+// giveaway/gamble/help/buy-ad) use config.autoClose.inactivityMs (default
+// 5 days); digout/base building tickets (config.serviceCategories) use
+// config.autoClose.serviceInactivityMs instead (default 10 days), since
+// build orders naturally sit longer between replies. Activity is tracked
+// in ticketActivity.js, touched on ticket creation and on every message
+// sent in a ticket channel (see the messageCreate listener below). If a
+// ticket has no recorded activity at all (e.g. bot restarted and it's an
+// old entry), falls back to the channel's creation time.
 // =====================================================================
 async function checkAutoCloseTickets() {
   if (config.autoClose && config.autoClose.enabled === false) return;
   const inactivityMs = config.autoClose?.inactivityMs ?? 5 * 24 * 60 * 60 * 1000;
+  const serviceInactivityMs = config.autoClose?.serviceInactivityMs ?? 10 * 24 * 60 * 60 * 1000;
 
   const guild = (config.guildId && client.guilds.cache.get(config.guildId)) || client.guilds.cache.first();
   if (!guild) return;
 
+  const serviceParentIds = new Set(Object.values(config.serviceCategories));
   const ticketParentIds = new Set([
     ...Object.values(config.categories),
-    ...Object.values(config.serviceCategories),
+    ...serviceParentIds,
     config.buyAd.category
   ]);
 
@@ -147,10 +154,13 @@ async function checkAutoCloseTickets() {
   );
 
   for (const channel of candidates.values()) {
+    const isService = serviceParentIds.has(channel.parentId);
+    const threshold = isService ? serviceInactivityMs : inactivityMs;
     const lastActivity = getLastActivity(channel.id) ?? channel.createdTimestamp;
-    if (now - lastActivity < inactivityMs) continue;
+    if (now - lastActivity < threshold) continue;
     try {
-      await performTicketClose(guild, channel, client.user, null, { auto: true });
+      const days = Math.round(threshold / (24 * 60 * 60 * 1000));
+      await performTicketClose(guild, channel, client.user, null, { auto: true, days });
     } catch (err) {
       console.error(`Auto-close failed for #${channel.name}:`, err);
     }
