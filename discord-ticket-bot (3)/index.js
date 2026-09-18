@@ -424,10 +424,10 @@ client.on("interactionCreate", async i => {
           { name: v.questions[1].label, value: answer1 },
           { name: "Priority", value: priority ? `Yes (+${config.priorityFeePercent}%)` : "No", inline: true }
         )
-        .setFooter({ text: "Open Ticket" });
+        .setFooter({ text: "Sac's Services" });
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
       );
 
       if (t === "digout") {
@@ -511,10 +511,10 @@ client.on("interactionCreate", async i => {
       touchActivity(c.id);
       const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v.emoji} ${v.label}`)
         .addFields(v.questions.map((q, n) => ({ name: q.label, value: i.fields.getTextInputValue("q" + n) || "N/A" })))
-        .setFooter({ text: "Open Ticket" });
+        .setFooter({ text: "Sac's Services" });
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
       );
       await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
       await logTicketEvent(i.guild, {
@@ -557,10 +557,10 @@ client.on("interactionCreate", async i => {
 
       const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle("Buy Ad")
         .setDescription(`Ticket opened by ${i.user}`)
-        .setFooter({ text: "Open Ticket" });
+        .setFooter({ text: "Sac's Services" });
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
       );
       await c.send({ content: `${i.user} ${config.buyAd.roles.map(r => `<@&${r}>`).join(" ")}`, embeds: [emb], components: [row] });
       await logTicketEvent(i.guild, {
@@ -626,8 +626,8 @@ client.on("interactionCreate", async i => {
       recordTrackerEvent(client, i.guild.id, i.user.id, "claims").catch(() => {});
       const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: `Claimed by ${i.user.tag}` });
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("unclaim").setLabel("Unclaim").setEmoji("🔓").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId("unclaim").setLabel("Unclaim").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
       );
       await i.update({ embeds: [e], components: [row] });
       await logTicketEvent(i.guild, {
@@ -652,10 +652,10 @@ client.on("interactionCreate", async i => {
       }
       await i.channel.permissionOverwrites.set(overwrites);
       deleteClaim(i.channelId);
-      const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: "Open Ticket" });
+      const e = EmbedBuilder.from(i.message.embeds[0]).setFooter({ text: "Sac's Services" });
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setEmoji("🤝").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
       );
       await i.update({ embeds: [e], components: [row] });
       await logTicketEvent(i.guild, {
