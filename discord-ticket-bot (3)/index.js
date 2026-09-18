@@ -847,8 +847,8 @@ client.on("interactionCreate", async i => {
   if (i.isModalSubmit() && i.customId === "link_ign_modal") {
     const ign = i.fields.getTextInputValue("ign").trim();
 
-    if (!/^[A-Za-z0-9_]{2,16}$/.test(ign)) {
-      return i.reply({ content: "That's not a valid IGN — 2 to 16 letters, numbers, or underscores only.", ephemeral: true });
+    if (!/^[A-Za-z0-9_.]{2,16}$/.test(ign)) {
+      return i.reply({ content: "That's not a valid IGN — 2 to 16 letters, numbers, underscores, or periods.", ephemeral: true });
     }
 
     const takenBy = findByIGN(ign, i.user.id);
