@@ -24,13 +24,17 @@ module.exports = {
       return interaction.reply({ content: `${user} doesn't have an IGN linked.`, ephemeral: true });
     }
 
-    removeIGN(user.id);
+    const removed = removeIGN(user.id);
 
-    // Try to strip the "[IGN]" suffix back off their nickname.
+    // Restore their nickname to whatever it was before they ever linked an
+    // IGN. Falls back to stripping the "[IGN]" suffix if we don't have an
+    // original name on record (e.g. entry created before this update).
     const member = await interaction.guild.members.fetch(user.id).catch(() => null);
     if (member) {
-      const stripped = member.displayName.replace(/\s*\[.+\]$/, "").trim();
-      await member.setNickname(stripped || null).catch(() => {});
+      const restored = removed && removed.originalName
+        ? removed.originalName
+        : member.displayName.replace(/\s*\[.+\]$/, "").trim();
+      await member.setNickname(restored || null).catch(() => {});
     }
 
     await logIGNEvent(interaction.guild, {
