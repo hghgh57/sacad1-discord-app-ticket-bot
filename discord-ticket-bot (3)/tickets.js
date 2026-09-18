@@ -9,6 +9,7 @@ const {
   TextDisplayBuilder,
   SeparatorBuilder,
   SeparatorSpacingSize,
+  FileBuilder,
   MessageFlags
 } = require("discord.js");
 const config = require("./config");
@@ -199,27 +200,40 @@ async function logTicketEvent(guild, {
   const channel = await guild.channels.fetch(config.ticketLogChannel).catch(() => null);
   if (!channel) return;
 
+  // Compact single block — bold inline labels instead of big ##/### headers,
+  // so the whole log stays small instead of stretching across several
+  // full-size heading blocks.
+  const lines = [`**Channel:** ${ticketChannel}`];
+  if (openedBy) lines.push(`**Opened by:** ${openedBy}`);
+  if (actionLabel && actionBy) lines.push(`**${actionLabel}:** ${actionBy}`);
+  if (reason) lines.push(`**Reason:** ${reason}`);
+  lines.push(`**Category:** ${category || "Unknown"}`);
+
   const container = new ContainerBuilder()
     .setAccentColor(color)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${title}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${title}`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**Channel**\n${ticketChannel}`));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
 
-  if (openedBy) {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Opened by\n${openedBy}`));
+  // Components V2 messages don't reliably show plain `files` attachments —
+  // Discord wants an explicit File component pointing at the upload, or it
+  // can get dropped. So for every file passed in, add one of those too.
+  for (const file of files) {
+    const fileName = file?.name || file?.attachment?.name;
+    if (fileName) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+        .addFileComponents(new FileBuilder().setURL(`attachment://${fileName}`));
+    }
   }
-  if (actionLabel && actionBy) {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${actionLabel}\n${actionBy}`));
-  }
-  if (reason) {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**Reason**\n${reason}`));
-  }
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**Category**\n${category || "Unknown"}`));
 
   await channel.send({
     flags: MessageFlags.IsComponentsV2,
     components: [container],
-    files
+    files,
+    // Mentions in the text above (opener/claimer/closer) are just plain
+    // text references here, not pings — nobody gets notified from this log.
+    allowedMentions: { parse: [] }
   }).catch(() => {});
 }
 
