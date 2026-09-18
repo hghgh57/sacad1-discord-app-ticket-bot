@@ -39,6 +39,7 @@ const {
 // channelId -> claimer's user id. Lives in ./ticketClaims (not a local Map
 // here) so commands/close.js can read the same claim lock the buttons use.
 const { getClaim, setClaim, deleteClaim } = require("./ticketClaims");
+const { getIGN, findByIGN, setIGN, logIGNEvent } = require("./ign");
 
 // staffUserId -> { userIds, roleIds }, held while the admin is still
 // picking users/roles in step 1 of /tracker-start.
@@ -822,6 +823,55 @@ client.on("interactionCreate", async i => {
       }).catch(() => {});
     }
     return;
+  }
+
+  // ---- IGN link button: show the modal ----
+  if (i.isButton() && i.customId === "link_ign") {
+    const modal = new ModalBuilder()
+      .setCustomId("link_ign_modal")
+      .setTitle("Link Your Minecraft IGN");
+
+    const ignInput = new TextInputBuilder()
+      .setCustomId("ign")
+      .setLabel("What's Your IGN")
+      .setStyle(TextInputStyle.Short)
+      .setMinLength(2)
+      .setMaxLength(16)
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(ignInput));
+    return i.showModal(modal);
+  }
+
+  // ---- IGN link modal submit ----
+  if (i.isModalSubmit() && i.customId === "link_ign_modal") {
+    const ign = i.fields.getTextInputValue("ign").trim();
+
+    if (!/^[A-Za-z0-9_]{2,16}$/.test(ign)) {
+      return i.reply({ content: "That's not a valid IGN — 2 to 16 letters, numbers, or underscores only.", ephemeral: true });
+    }
+
+    const takenBy = findByIGN(ign, i.user.id);
+    if (takenBy) {
+      return i.reply({ content: "Someone else already has that IGN linked.", ephemeral: true });
+    }
+
+    const previousIgn = getIGN(i.user.id);
+    setIGN(i.user.id, ign);
+
+    const member = i.member;
+    const baseName = member.displayName.replace(/\s*\[.+\]$/, "").trim();
+    await member.setNickname(`${baseName} [${ign}]`).catch(() => {});
+
+    await logIGNEvent(i.guild, {
+      action: previousIgn ? "Updated" : "Linked",
+      user: i.user,
+      ign,
+      previousIgn,
+      actionBy: i.user
+    });
+
+    return i.reply({ content: `Linked your IGN as \`${ign}\`.`, ephemeral: true });
   }
 });
 
