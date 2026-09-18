@@ -1,8 +1,8 @@
 const {
   SlashCommandBuilder, ModalBuilder, ActionRowBuilder,
-  TextInputBuilder, TextInputStyle, PermissionsBitField
+  TextInputBuilder, TextInputStyle
 } = require("discord.js");
-const { isStaff, isBuildStaff } = require("../utils");
+const { isStaff, isBuildStaff, isAdmin } = require("../utils");
 const config = require("../config");
 const { getClaim } = require("../ticketClaims");
 
@@ -36,8 +36,7 @@ module.exports = {
     const isService = isServiceChannel(channel);
     const claimerId = getClaim(channel.id);
     const openerId = channel.topic;
-    const hasBypass = interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)
-      || interaction.member.roles.cache.has(config.bypassRole);
+    const hasBypass = isAdmin(interaction.member);
 
     if (isService && claimerId) {
       // Already claimed — locked down to the claimer, the ticket owner, or bypass role only.
