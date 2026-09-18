@@ -165,12 +165,62 @@ async function sendBuyAdPanel(channel) {
   await channel.send({ embeds: [e], components: [row] });
 }
 
-async function logTicketEvent(guild, description, color = "#8B5CF6", files = []) {
+// =====================================================================
+// TICKET LOGGING
+// Sent as a Components V2 message (Container + separators) so it can use
+// real headers (##/###) instead of plain embed fields.
+//
+// Pass:
+//   title       - e.g. "Ticket Closed", "Ticket Claimed", "Ticket Renamed"
+//   ticketChannel - the ticket's channel (mentionable) or a channel mention string
+//   category    - display name for what kind of ticket this is
+//   openedBy    - (optional) user/mention who originally opened the ticket.
+//                 Omit this for claim/unclaim/rename logs — only
+//                 open/close logs show who opened the ticket.
+//   actionLabel - heading for who performed this action, e.g. "Closed by",
+//                 "Claimed by", "Unclaimed by", "Renamed by", "Opened by"
+//   actionBy    - user/mention who performed the action
+//   reason      - (optional) extra line, e.g. a close reason or error
+//   color       - accent color as a hex number (e.g. 0xF04747)
+//   files       - (optional) attachments, e.g. a close transcript
+// =====================================================================
+async function logTicketEvent(guild, {
+  title,
+  ticketChannel,
+  category,
+  openedBy,
+  actionLabel,
+  actionBy,
+  reason,
+  color = 0x8B5CF6,
+  files = []
+}) {
   if (!config.ticketLogChannel) return;
   const channel = await guild.channels.fetch(config.ticketLogChannel).catch(() => null);
   if (!channel) return;
-  const embed = new EmbedBuilder().setColor(color).setDescription(description).setTimestamp();
-  await channel.send({ embeds: [embed], files }).catch(() => {});
+
+  const container = new ContainerBuilder()
+    .setAccentColor(color)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${title}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**Channel**\n${ticketChannel}`));
+
+  if (openedBy) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### Opened by\n${openedBy}`));
+  }
+  if (actionLabel && actionBy) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${actionLabel}\n${actionBy}`));
+  }
+  if (reason) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**Reason**\n${reason}`));
+  }
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**Category**\n${category || "Unknown"}`));
+
+  await channel.send({
+    flags: MessageFlags.IsComponentsV2,
+    components: [container],
+    files
+  }).catch(() => {});
 }
 
 // Fetches every message in a ticket channel (oldest -> newest) and builds
