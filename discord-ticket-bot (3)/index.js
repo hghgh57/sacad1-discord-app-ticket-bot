@@ -7,7 +7,7 @@ const {
   AttachmentBuilder, ActivityType
 } = require("discord.js");
 const config = require("./config");
-const { isStaff, isBuildStaff, isAdmin } = require("./utils");
+const { isStaff, isBuildStaff, isAdmin, hasFullAccess } = require("./utils");
 const { tickets, sendTicketPanel, logTicketEvent, buildTranscript } = require("./tickets");
 const {
   serviceTickets, parseDimensions, calculateDigoutCost, formatPrice,
@@ -29,6 +29,7 @@ const {
   createTracker, recordTrackerEvent, stopTracker, startWeeklyResetScheduler
 } = require("./tracker");
 const { getLockSnapshot, setLockSnapshot, deleteLockSnapshot } = require("./locks");
+const { touchActivity, getLastActivity, deleteActivity } = require("./ticketActivity");
 const {
   buildStepOneComponents: buildTrackerStepOneComponents,
   buildStepOneContent: buildTrackerStepOneContent,
@@ -66,15 +67,22 @@ function isTicketChannel(channel) {
   return inTicketCategory && /^\d{15,25}$/.test(channel.topic || "");
 }
 
-// Shared by the normal Close button/modal flow AND ,requestclose's Accept
-// button — builds/sends the transcript, DMs the opener, logs it, and
-// deletes the channel. Everything else (the initial ack, permission
-// checks) is handled by whichever flow calls this.
-async function performTicketClose(guild, channel, closedByUser, reason) {
+// Shared by the normal Close button/modal flow, ,requestclose's Accept
+// button, AND the 5-day auto-close scheduler — builds/sends the transcript,
+// DMs the opener, logs it, and deletes the channel. Everything else (the
+// initial ack, permission checks) is handled by whichever flow calls this.
+// Pass { auto: true } for an automatic inactivity close — swaps the DM/log
+// wording to "Auto Closed" / "Inactive for 5 days" and skips attributing a
+// staff "close" stat to whoever/whatever triggered it.
+async function performTicketClose(guild, channel, closedByUser, reason, opts = {}) {
+  const auto = !!opts.auto;
   deleteClaim(channel.id);
-  recordClose(closedByUser.id);
-  refreshCard(client, closedByUser.id).catch(() => {});
-  recordTrackerEvent(client, guild.id, closedByUser.id, "closes").catch(() => {});
+  deleteActivity(channel.id);
+  if (!auto) {
+    recordClose(closedByUser.id);
+    refreshCard(client, closedByUser.id).catch(() => {});
+    recordTrackerEvent(client, guild.id, closedByUser.id, "closes").catch(() => {});
+  }
 
   try {
     const { content, filename } = await buildTranscript(channel, reason);
@@ -83,23 +91,70 @@ async function performTicketClose(guild, channel, closedByUser, reason) {
     const opener = await client.users.fetch(openerId).catch(() => null);
     if (opener) {
       await opener.send({
-        content: `📄 Here's the transcript for your ticket **#${channel.name}**.`,
+        content: auto
+          ? `🔒 **Auto Closed**\n**Inactive for 5 days** — here's the transcript for your ticket **#${channel.name}**.`
+          : `📄 Here's the transcript for your ticket **#${channel.name}**.`,
         files: [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
       }).catch(() => {});
     }
 
     await logTicketEvent(
       guild,
-      `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""}`,
+      auto
+        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for 5 days**`
+        : `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""}`,
       "#F04747",
       [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
     );
   } catch (err) {
     console.error(`Failed to build/send transcript for #${channel.name}:`, err);
-    await logTicketEvent(guild, `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""} (⚠️ transcript failed — check logs)`, "#F04747");
+    await logTicketEvent(
+      guild,
+      auto
+        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for 5 days** (⚠️ transcript failed — check logs)`
+        : `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""} (⚠️ transcript failed — check logs)`,
+      "#F04747"
+    );
   }
 
   setTimeout(() => channel.delete().catch(() => {}), 3000);
+}
+
+// =====================================================================
+// AUTO-CLOSE — scans every open ticket channel and closes any with no
+// activity for config.autoClose.inactivityMs (default 5 days). Activity is
+// tracked in ticketActivity.js, touched on ticket creation and on every
+// message sent in a ticket channel (see the messageCreate listener below).
+// If a ticket has no recorded activity at all (e.g. bot restarted and it's
+// an old entry), falls back to the channel's creation time.
+// =====================================================================
+async function checkAutoCloseTickets() {
+  if (config.autoClose && config.autoClose.enabled === false) return;
+  const inactivityMs = config.autoClose?.inactivityMs ?? 5 * 24 * 60 * 60 * 1000;
+
+  const guild = (config.guildId && client.guilds.cache.get(config.guildId)) || client.guilds.cache.first();
+  if (!guild) return;
+
+  const ticketParentIds = new Set([
+    ...Object.values(config.categories),
+    ...Object.values(config.serviceCategories),
+    config.buyAd.category
+  ]);
+
+  const now = Date.now();
+  const candidates = guild.channels.cache.filter(ch =>
+    ch.type === ChannelType.GuildText && ticketParentIds.has(ch.parentId) && isTicketChannel(ch)
+  );
+
+  for (const channel of candidates.values()) {
+    const lastActivity = getLastActivity(channel.id) ?? channel.createdTimestamp;
+    if (now - lastActivity < inactivityMs) continue;
+    try {
+      await performTicketClose(guild, channel, client.user, null, { auto: true });
+    } catch (err) {
+      console.error(`Auto-close failed for #${channel.name}:`, err);
+    }
+  }
 }
 
 // Role allowed to use ,requestclose.
@@ -160,6 +215,13 @@ client.once("ready", () => {
   console.log("Note: slash commands are registered via `node deploy-commands.js`, not on startup.");
   client.user.setActivity("discord.gg/sacad1", { type: ActivityType.Watching });
   startWeeklyResetScheduler(client);
+
+  // 5-day ticket auto-close — run once at startup, then on a timer.
+  const autoCloseIntervalMs = config.autoClose?.checkIntervalMs ?? 15 * 60 * 1000;
+  checkAutoCloseTickets().catch(err => console.error("Initial auto-close check failed:", err));
+  setInterval(() => {
+    checkAutoCloseTickets().catch(err => console.error("Auto-close check failed:", err));
+  }, autoCloseIntervalMs);
 });
 
 // =====================================================================
@@ -320,6 +382,7 @@ client.on("interactionCreate", async i => {
           { id: config.buildTicketRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
         ]
       });
+      touchActivity(c.id);
 
       const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v.emoji} ${v.label}`)
         .addFields(
@@ -404,6 +467,7 @@ client.on("interactionCreate", async i => {
           { id: config.staffRole, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
         ]
       });
+      touchActivity(c.id);
       const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v.emoji} ${v.label}`)
         .addFields(v.questions.map((q, n) => ({ name: q.label, value: i.fields.getTextInputValue("q" + n) || "N/A" })))
         .setFooter({ text: "Open Ticket" });
@@ -441,6 +505,7 @@ client.on("interactionCreate", async i => {
           ...config.buyAd.roles.map(roleId => ({ id: roleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }))
         ]
       });
+      touchActivity(c.id);
 
       const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle("Buy Ad")
         .setDescription(`Ticket opened by ${i.user}`)
@@ -465,7 +530,7 @@ client.on("interactionCreate", async i => {
     const isService = isServiceChannel(i.channel);
     const claimerId = getClaim(i.channelId);
     const openerId = i.channel.topic;
-    const hasBypass = i.member.permissions.has(PermissionsBitField.Flags.Administrator) || i.member.roles.cache.has(config.bypassRole);
+    const hasBypass = isAdmin(i.member);
 
     if (i.customId === "unclaim") {
       // Only the claimer or bypass role can give up a claim (not the opener).
@@ -717,6 +782,17 @@ client.on("messageCreate", message => {
 });
 
 // =====================================================================
+// TICKET ACTIVITY TRACKING — records the last time any message (including
+// staff/bot messages) was sent in a ticket channel. Used by the 5-day
+// auto-close scheduler (checkAutoCloseTickets, defined near the top).
+// =====================================================================
+client.on("messageCreate", message => {
+  if (!message.guild) return;
+  if (!isTicketChannel(message.channel)) return;
+  touchActivity(message.channel.id);
+});
+
+// =====================================================================
 // ROASTS — used by ,roast @user
 // =====================================================================
 const ROASTS = [
@@ -852,11 +928,12 @@ const DM_COMMAND_USER_ID = "1451106424145973359";
 const DM_COOLDOWN_MS = 60_000;
 let dmLastUsed = 0; // only one user can ever use this command, so a single shared timestamp is enough
 
-// Only this role can use ,advertise and ,adstop — no admin/bypass-role
-// override, intentionally, so it's just this role and nothing else.
+// Only this role can use ,advertise and ,adstop — plus the server owner and
+// config.fullAccessRole, who bypass every permission check in the bot (see
+// utils.js hasFullAccess).
 const ADVERTISE_ROLE_ID = "1538332080469966998";
 function canAdvertise(member) {
-  return member.roles.cache.has(ADVERTISE_ROLE_ID);
+  return hasFullAccess(member) || member.roles.cache.has(ADVERTISE_ROLE_ID);
 }
 
 // =====================================================================
@@ -924,7 +1001,7 @@ client.on("messageCreate", async message => {
   }
 
   if (cmd === "lock") {
-    const canLock = message.member.permissions.has(PermissionsBitField.Flags.Administrator) || message.member.roles.cache.has(config.lockRole);
+    const canLock = isAdmin(message.member) || message.member.roles.cache.has(config.lockRole);
     if (!canLock) return message.reply({ content: "No permission." });
     const channel = message.channel;
     const everyoneId = message.guild.roles.everyone.id;
@@ -978,7 +1055,7 @@ client.on("messageCreate", async message => {
   }
 
   if (cmd === "unlock") {
-    const canLock = message.member.permissions.has(PermissionsBitField.Flags.Administrator) || message.member.roles.cache.has(config.lockRole);
+    const canLock = isAdmin(message.member) || message.member.roles.cache.has(config.lockRole);
     if (!canLock) return message.reply({ content: "No permission." });
     const channel = message.channel;
     const everyoneId = message.guild.roles.everyone.id;
@@ -1038,7 +1115,7 @@ client.on("messageCreate", async message => {
   }
 
   if (cmd === "purge") {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+    if (!isAdmin(message.member)) {
       return message.reply({ content: "No permission." });
     }
 
@@ -1189,6 +1266,7 @@ client.on("messageCreate", async message => {
   // instead of closing it outright.
   if (cmd === "requestclose") {
     const hasRequestCloseRole =
+      isStaff(message.member) ||
       message.member.roles.cache.has(REQUEST_CLOSE_ROLE_ID) ||
       message.member.roles.cache.has(REQUEST_CLOSE_ROLE_ID_2);
     if (!hasRequestCloseRole) {
