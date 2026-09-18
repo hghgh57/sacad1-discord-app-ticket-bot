@@ -108,12 +108,29 @@ async function performTicketClose(guild, channel, closedByUser, reason, opts = {
       [new AttachmentBuilder(Buffer.from(content, "utf-8"), { name: filename })]
     );
   } catch (err) {
+    // Code 10003 (Unknown Channel) / 50001 (Missing Access) mean the
+    // channel is already gone on Discord's side — deleted manually or by
+    // an earlier close, with a stale reference left behind in the local
+    // cache. There's nothing to transcript and nothing left to delete, so
+    // instead of erroring on it forever (every scan, every restart), evict
+    // it from the cache and move on quietly.
+    if (err.code === 10003 || err.code === 50001) {
+      guild.channels.cache.delete(channel.id);
+      console.warn(`#${channel.name} (${channel.id}) no longer exists on Discord — clearing it from tracking, nothing more to do.`);
+      return;
+    }
+
     console.error(`Failed to build/send transcript for #${channel.name}:`, err);
+    // Show the actual error in the log channel itself, not just the
+    // console — most hosts (Railway, etc.) bury console output somewhere
+    // you have to dig for, so surfacing it here means you can see exactly
+    // why it failed without leaving Discord.
+    const errText = (err?.message || String(err)).slice(0, 500);
     await logTicketEvent(
       guild,
       auto
-        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for ${days} days** (⚠️ transcript failed — check logs)`
-        : `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""} (⚠️ transcript failed — check logs)`,
+        ? `🔒 **Auto Closed**\nTicket **#${channel.name}** — **Inactive for ${days} days**\n⚠️ Transcript failed: \`${errText}\``
+        : `🔒 Ticket **#${channel.name}** closed by ${closedByUser}${reason ? `\n**Reason:** ${reason}` : ""}\n⚠️ Transcript failed: \`${errText}\``,
       "#F04747"
     );
   }
