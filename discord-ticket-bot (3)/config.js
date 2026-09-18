@@ -8,7 +8,22 @@ module.exports = {
   panelChannel: "PANEL_CHANNEL_ID",
   bypassRole: "1546728771208482876", // can always type in a ticket even after it's been claimed by someone else (bypasses the claim lock)
   staffRole: "1482008632747884736", // gets pinged + can see every new ticket as soon as it's created
+  // The server owner always has full access everywhere in the bot, no
+  // matter what. Anyone with this role gets that exact same full access —
+  // every command, every ticket action (claim/close/rename/add/etc.),
+  // bypassing claim locks, ,lock/,unlock, ,purge — identical to the owner.
+  // See utils.js (isStaff/isBuildStaff/isAdmin) for where this is checked.
+  fullAccessRole: "1455703614432481485",
   ticketLogChannel: "1477059741657206934", // where ticket opened/claimed/closed events get logged. Leave as-is (or "") to disable logging.
+  // Tickets with no new messages for this long get closed automatically
+  // (transcript DM'd to the opener + logged, same as a normal close, just
+  // labelled "Auto Closed" / "Inactive for 5 days"). See index.js's
+  // checkAutoCloseTickets().
+  autoClose: {
+    enabled: true,
+    inactivityMs: 5 * 24 * 60 * 60 * 1000, // 5 days
+    checkIntervalMs: 15 * 60 * 1000 // how often to scan for stale tickets
+  },
   categories: {
     buying: "1514955042958868551",
     selling: "1479693976087957596",
