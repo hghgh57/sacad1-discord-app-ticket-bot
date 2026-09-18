@@ -3,7 +3,9 @@ const path = require("path");
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const config = require("./config");
 
-// Simple JSON-file-backed store, same pattern as stats.js — { userId: "IGN" }.
+// Simple JSON-file-backed store, same pattern as stats.js.
+// { userId: { ign: "IGN", originalName: "NameBeforeLinking" } }
+// (Older entries may just be a plain string "IGN" — handled for backwards compat.)
 const DATA_FILE = path.join(__dirname, "data", "ign.json");
 
 function load() {
@@ -25,32 +27,58 @@ function save() {
 
 const data = load();
 
+// Normalizes an entry so callers always get { ign, originalName } or null.
+function getEntry(userId) {
+  const entry = data[userId];
+  if (!entry) return null;
+  if (typeof entry === "string") return { ign: entry, originalName: null };
+  return entry;
+}
+
 function getIGN(userId) {
-  return data[userId] || null;
+  const entry = getEntry(userId);
+  return entry ? entry.ign : null;
+}
+
+// The display name the user had right before they first linked an IGN.
+function getOriginalName(userId) {
+  const entry = getEntry(userId);
+  return entry ? entry.originalName : null;
 }
 
 // Returns the userId already using this IGN (case-insensitive), excluding
 // the given user (so re-linking your own IGN doesn't flag itself), or null.
 function findByIGN(ign, excludeUserId = null) {
   const lower = ign.toLowerCase();
-  for (const [uid, storedIgn] of Object.entries(data)) {
-    if (uid !== excludeUserId && storedIgn.toLowerCase() === lower) return uid;
+  for (const [uid, entry] of Object.entries(data)) {
+    if (uid === excludeUserId) continue;
+    const storedIgn = typeof entry === "string" ? entry : entry.ign;
+    if (storedIgn.toLowerCase() === lower) return uid;
   }
   return null;
 }
 
-function setIGN(userId, ign) {
-  data[userId] = ign;
+// originalName is only used the FIRST time a user links (when no entry exists
+// yet); on later re-links/updates the originally-captured name is preserved
+// so unlinking always restores the name from before any IGN was ever linked.
+function setIGN(userId, ign, originalName = null) {
+  const existing = getEntry(userId);
+  data[userId] = {
+    ign,
+    originalName: existing ? existing.originalName : originalName
+  };
   save();
 }
 
+// Removes the stored entry and returns it ({ ign, originalName }) so the
+// caller can restore the user's nickname, or null if nothing was stored.
 function removeIGN(userId) {
-  const had = userId in data;
-  if (had) {
+  const entry = getEntry(userId);
+  if (entry) {
     delete data[userId];
     save();
   }
-  return had;
+  return entry;
 }
 
 async function sendIGNPanel(channel) {
@@ -95,4 +123,4 @@ async function logIGNEvent(guild, { action, user, ign, previousIgn, actionBy }) 
   await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => {});
 }
 
-module.exports = { getIGN, findByIGN, setIGN, removeIGN, sendIGNPanel, logIGNEvent };
+module.exports = { getIGN, getOriginalName, findByIGN, setIGN, removeIGN, sendIGNPanel, logIGNEvent };
