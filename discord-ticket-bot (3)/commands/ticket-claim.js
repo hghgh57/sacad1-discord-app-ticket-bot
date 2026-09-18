@@ -88,7 +88,14 @@ module.exports = {
       // went through, so this is just cosmetic and safe to skip.
     }
 
-    await logTicketEvent(interaction.guild, `🤝 Ticket **#${channel.name}** claimed by ${interaction.user}`);
+    await logTicketEvent(interaction.guild, {
+      title: "Ticket Claimed",
+      ticketChannel: channel,
+      category: channel.parent?.name,
+      actionLabel: "Claimed by",
+      actionBy: interaction.user,
+      color: 0x8B5CF6
+    });
     return interaction.reply({ content: `Claimed by ${interaction.user}` });
   }
 };
