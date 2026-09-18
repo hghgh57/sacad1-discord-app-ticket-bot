@@ -17,11 +17,13 @@ module.exports = {
   ticketLogChannel: "1477059741657206934", // where ticket opened/claimed/closed events get logged. Leave as-is (or "") to disable logging.
   // Tickets with no new messages for this long get closed automatically
   // (transcript DM'd to the opener + logged, same as a normal close, just
-  // labelled "Auto Closed" / "Inactive for 5 days"). See index.js's
-  // checkAutoCloseTickets().
+  // labelled "Auto Closed" / "Inactive for N days"). Digout/base building
+  // (serviceCategories) tickets use serviceInactivityMs instead of the
+  // regular inactivityMs — see index.js's checkAutoCloseTickets().
   autoClose: {
     enabled: true,
-    inactivityMs: 5 * 24 * 60 * 60 * 1000, // 5 days
+    inactivityMs: 5 * 24 * 60 * 60 * 1000, // 5 days — buying/selling/partnership/giveaway/gamble/help/buy-ad tickets
+    serviceInactivityMs: 10 * 24 * 60 * 60 * 1000, // 10 days — digout/base building (serviceCategories) tickets
     checkIntervalMs: 15 * 60 * 1000 // how often to scan for stale tickets
   },
   categories: {
