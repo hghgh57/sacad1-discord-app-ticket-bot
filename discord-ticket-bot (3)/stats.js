@@ -139,8 +139,8 @@ async function buildLeaderboardEmbed(client, field) {
   }
 
   return new EmbedBuilder()
-    .setColor("#8B5CF6")
-    .setTitle(`📊 ${info.emoji} ${info.label} Leaderboard`)
+    .setColor("#99AAB5")
+    .setTitle(`${info.emoji} ${info.label} Leaderboard`)
     .setDescription(lines.length ? lines.join("\n") : "No data yet.");
 }
 
