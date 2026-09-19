@@ -584,14 +584,51 @@ client.on("interactionCreate", async i => {
         .addFields(fieldValues)
         .setFooter({ text: "Sac's Services" });
 
-      if (t === "giveaway") {
-        emb.spliceFields(0, 0, { name: "Opened By", value: `${i.user}`, inline: false });
-      }
-
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
       );
+
+      // Giveaway claim checker — run it now (if they gave a usable amount)
+      // so the Yes/No result lands right in the ticket-opening embed,
+      // instead of a separate message after. If they left the amount
+      // blank/unparseable, they can still trigger it later by typing the
+      // amount as a plain message in the ticket (see the messageCreate
+      // listener below) — that path posts its own follow-up embed instead.
+      if (t === "giveaway") {
+        emb.spliceFields(0, 0, { name: "Opened By", value: `${i.user}`, inline: false });
+
+        if (wonAmount !== null) {
+          markGiveawayChecked(c.id);
+          const result = await findGiveawayWin(i.guild, i.user.id, wonAmount);
+
+          if (!result.configured) {
+            emb.setColor("#F1C40F").addFields({
+              name: "Claim Check",
+              value: "⚠️ Not checked automatically — `giveawayCheck.channels` isn't set in config.js yet. Staff should verify manually."
+            });
+          } else if (result.found) {
+            emb.setColor("#57F287").addFields({
+              name: "Claim Check",
+              value: `✅ Yes, they won **${formatAmountShort(wonAmount)}** — [jump to the win](${result.message.url})`
+            });
+            row.addComponents(
+              new ButtonBuilder().setLabel("Jump to Win").setEmoji("🔗").setStyle(ButtonStyle.Link).setURL(result.message.url)
+            );
+          } else {
+            emb.setColor("#F04747").addFields({
+              name: "Claim Check",
+              value: `❌ No matching giveaway win found for **${formatAmountShort(wonAmount)}**.`
+            });
+          }
+        } else {
+          emb.addFields({
+            name: "Claim Check",
+            value: "⏳ No amount given yet — once they type it in the ticket, I'll check automatically."
+          });
+        }
+      }
+
       await c.send({ content: `${i.user} <@&${config.staffRole}>`, embeds: [emb], components: [row] });
       await logTicketEvent(i.guild, {
         title: "Ticket Opened",
@@ -601,14 +638,6 @@ client.on("interactionCreate", async i => {
         actionBy: i.user,
         color: 0x8B5CF6
       });
-
-      // Giveaway claim checker — if they gave a real amount, check it right
-      // away. If not (left it blank / typed something we couldn't parse),
-      // they can still trigger it later by typing the amount as a plain
-      // message in the ticket — see the messageCreate listener below.
-      if (t === "giveaway" && wonAmount !== null) {
-        await runGiveawayCheck(c, i.user.id, wonAmount);
-      }
 
       return i.reply({ content: `Created: ${c}`, ephemeral: true });
     } catch (err) {
