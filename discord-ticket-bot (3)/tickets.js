@@ -50,12 +50,7 @@ const tickets = {
     label: "Giveaway Claim/Sponsor",
     questions: [
       { label: "How much did you win?", style: TextInputStyle.Short },
-      { label: "What's your IGN?", style: TextInputStyle.Short },
-      {
-        label: "Can you provide an uncropped screenshot?",
-        style: TextInputStyle.Short,
-        placeholder: "Yes/No - attach it in the ticket once it's created"
-      }
+      { label: "What's your IGN?", style: TextInputStyle.Short }
     ]
   },
   gamble: {
