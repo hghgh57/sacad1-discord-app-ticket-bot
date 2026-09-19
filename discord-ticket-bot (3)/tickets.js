@@ -269,4 +269,36 @@ async function buildTranscript(channel, reason) {
   return { content: header + (lines.join("\n") || "(no messages)"), filename: `transcript-${channel.name}.txt` };
 }
 
-module.exports = { tickets, sendTicketPanel, sendBuyAdPanel, logTicketEvent, buildTranscript };
+// =====================================================================
+// GIVEAWAY "JUMP TO WIN" BUTTON
+// Appended onto the ticket panel message (the one with Claim/Close) once
+// the giveaway checker finds a matching win, so staff can jump straight to
+// the announcement without leaving the ticket.
+// =====================================================================
+async function findTicketPanelMessage(channel) {
+  const messages = await channel.messages.fetch({ limit: 25 }).catch(() => null);
+  if (!messages) return null;
+
+  return messages.find(msg =>
+    msg.author.id === channel.client.user.id &&
+    msg.components.some(row => row.components.some(c => c.customId === "close"))
+  ) || null;
+}
+
+async function addJumpToWinButton(channel, url) {
+  const panelMessage = await findTicketPanelMessage(channel);
+  if (!panelMessage) return;
+
+  const existingRow = panelMessage.components[0];
+  if (!existingRow) return;
+
+  const row = ActionRowBuilder.from(existingRow);
+  row.addComponents(
+    new ButtonBuilder().setLabel("Jump to Win").setEmoji("🔗").setStyle(ButtonStyle.Link).setURL(url)
+  );
+  const otherRows = panelMessage.components.slice(1).map(r => ActionRowBuilder.from(r));
+
+  await panelMessage.edit({ components: [row, ...otherRows] }).catch(() => {});
+}
+
+module.exports = { tickets, sendTicketPanel, sendBuyAdPanel, logTicketEvent, buildTranscript, addJumpToWinButton };
