@@ -16,6 +16,17 @@ module.exports = {
   fullAccessRole: "1455703614432481485",
   ticketLogChannel: "1477059741657206934", // where ticket opened/claimed/closed events get logged. Leave as-is (or "") to disable logging.
   ignLogChannel: "1480429965873778738", // where IGN link/update/remove events get logged.
+
+  // Giveaway claim checker — when someone opens a "Giveaway Claim/Sponsor"
+  // ticket, these channels get scanned for a message mentioning them with
+  // an amount matching what they typed for "How much did you win?" — the
+  // result (found/not found, with a jump-to-win button) gets posted in the
+  // ticket automatically.
+  giveawayCheck: {
+    channels: ["GIVEAWAY_CHANNEL_ID_1", "GIVEAWAY_CHANNEL_ID_2"], // the channels your giveaway/tracker bot posts wins in
+    botId: "", // optional — only check messages from this bot's user ID; leave "" to check every message in those channels
+    searchLimit: 500 // how many recent messages to scan per channel (clamped 50-5000)
+  },
   // Tickets with no new messages for this long get closed automatically
   // (transcript DM'd to the opener + logged, same as a normal close, just
   // labelled "Auto Closed" / "Inactive for N days"). Digout/base building
