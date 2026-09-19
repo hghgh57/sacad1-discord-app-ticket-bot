@@ -19,7 +19,7 @@ const {
   APPLICATION_TYPES, sessions,
   startApplication, cancelApplication, submitAnswer, sendApplicationPanel
 } = require("./applications");
-const { recordDeletedMessage, clearSnipe, getSnipe, buildSnipeEmbed } = require("./snipe");
+const { recordDeletedMessage, getSnipe, buildSnipeEmbed } = require("./snipe");
 const { handleMessageForSticky } = require("./sticky");
 const { setAfk, clearAfk, getAfk } = require("./afk");
 const { recordClaim, recordClose } = require("./stats");
@@ -1235,7 +1235,7 @@ client.on("messageCreate", async message => {
 });
 
 // =====================================================================
-// GUILD TEXT COMMANDS (,s / ,cs / ,roast / ,afk)
+// GUILD TEXT COMMANDS (,s / ,roast / ,afk)
 // =====================================================================
 client.on("messageCreate", async message => {
   if (message.author.bot) return;
@@ -1256,12 +1256,6 @@ client.on("messageCreate", async message => {
     const snipe = getSnipe(message.channelId);
     if (!snipe) return message.reply({ content: "There's nothing to snipe in this channel." });
     return message.channel.send({ embeds: [buildSnipeEmbed(snipe)] });
-  }
-
-  if (cmd === "cs") {
-    if (!isStaff(message.member)) return message.reply({ content: "No permission." });
-    const cleared = clearSnipe(message.channelId);
-    return message.reply({ content: cleared ? "🧹 Snipe cleared for this channel." : "There was nothing to clear." });
   }
 
   if (cmd === "lock") {
@@ -1501,7 +1495,7 @@ client.on("messageCreate", async message => {
     }
 
     createCampaign(message.guild.id, message.author.id, target, text);
-    return message.reply({ content: ` Started an ad campaign — the next **${target}** members to join will be DM'd that message.` });
+    return message.reply({ content: `✅ Started an ad campaign — the next **${target}** members to join will be DM'd that message.` });
   }
 
   // ,adstop <count> — stops the active campaign that was started with that
@@ -1519,10 +1513,10 @@ client.on("messageCreate", async message => {
 
     const campaign = stopCampaignByTarget(message.guild.id, target);
     if (!campaign) {
-      return message.reply({ content: `❌No active campaign found with a target of ${target}.` });
+      return message.reply({ content: `❌ No active campaign found with a target of ${target}.` });
     }
 
-    return message.reply({ content: ` Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
+    return message.reply({ content: `🛑 Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
   }
 
   // ,requestclose — only REQUEST_CLOSE_ROLE_ID, only inside a ticket
