@@ -1501,7 +1501,7 @@ client.on("messageCreate", async message => {
     }
 
     createCampaign(message.guild.id, message.author.id, target, text);
-    return message.reply({ content: `✅ Started an ad campaign — the next **${target}** members to join will be DM'd that message.` });
+    return message.reply({ content: ` Started an ad campaign — the next **${target}** members to join will be DM'd that message.` });
   }
 
   // ,adstop <count> — stops the active campaign that was started with that
@@ -1519,10 +1519,10 @@ client.on("messageCreate", async message => {
 
     const campaign = stopCampaignByTarget(message.guild.id, target);
     if (!campaign) {
-      return message.reply({ content: `❌ No active campaign found with a target of ${target}.` });
+      return message.reply({ content: `❌No active campaign found with a target of ${target}.` });
     }
 
-    return message.reply({ content: `🛑 Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
+    return message.reply({ content: ` Stopped that campaign — it had DM'd **${campaign.sent}/${campaign.target}** members before being stopped.` });
   }
 
   // ,requestclose — only REQUEST_CLOSE_ROLE_ID, only inside a ticket
