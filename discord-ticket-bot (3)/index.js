@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const config = require("./config");
 const { isStaff, isBuildStaff, isAdmin, hasFullAccess } = require("./utils");
-const { tickets, sendTicketPanel, logTicketEvent, buildTranscript } = require("./tickets");
+const { tickets, sendTicketPanel, logTicketEvent, buildTranscript, addJumpToWinButton } = require("./tickets");
 const {
   serviceTickets, parseDimensions, calculateDigoutCost, formatPrice,
   sendServiceTicketPanel
@@ -40,6 +40,8 @@ const {
 // here) so commands/close.js can read the same claim lock the buttons use.
 const { getClaim, setClaim, deleteClaim } = require("./ticketClaims");
 const { getIGN, findByIGN, setIGN, logIGNEvent } = require("./ign");
+const { parseAmount, findGiveawayWin, formatAmountShort } = require("./giveawayChecker");
+const { isGiveawayChecked, markGiveawayChecked } = require("./giveawayChecks");
 
 // staffUserId -> { userIds, roleIds }, held while the admin is still
 // picking users/roles in step 1 of /tracker-start.
@@ -55,6 +57,49 @@ const LOCK_PERMS = ["SendMessages"];
 
 function isServiceChannel(channel) {
   return Object.values(config.serviceCategories).includes(channel.parentId);
+}
+
+// ---------- Giveaway claim amount check ----------
+// Looks up config.giveawayCheck.channels for a message mentioning the
+// ticket owner with a matching amount, posts a clear Yes/No result in the
+// ticket, and (if a win is found) adds a "Jump to Win" button onto the
+// ticket panel message. Only ever runs once per ticket (tracked in
+// giveawayChecks.js), whether triggered from the modal or from a later
+// plain-text message.
+async function runGiveawayCheck(channel, ownerId, amount) {
+  if (isGiveawayChecked(channel.id)) return;
+  markGiveawayChecked(channel.id);
+
+  const result = await findGiveawayWin(channel.guild, ownerId, amount);
+
+  if (!result.configured) {
+    const emb = new EmbedBuilder()
+      .setColor("#F04747")
+      .setTitle("❌ No Matching Win Found")
+      .setDescription(
+        `No matching win found for **${formatAmountShort(amount)}**.\n\n` +
+        "(Note for staff: `giveawayCheck.channels` isn't set in config.js yet, so this is unverified — please double check manually.)"
+      )
+      .setTimestamp();
+    return channel.send({ embeds: [emb] }).catch(() => {});
+  }
+
+  if (result.found) {
+    const emb = new EmbedBuilder()
+      .setColor("#57F287")
+      .setTitle("✅ Win Found")
+      .setDescription(`Found a matching win for **${formatAmountShort(amount)}**!`)
+      .setTimestamp();
+    await channel.send({ embeds: [emb] }).catch(() => {});
+    await addJumpToWinButton(channel, result.message.url);
+  } else {
+    const emb = new EmbedBuilder()
+      .setColor("#F04747")
+      .setTitle("❌ No Matching Win Found")
+      .setDescription(`No matching win found for **${formatAmountShort(amount)}** in the configured giveaway channels. Staff can still verify manually.`)
+      .setTimestamp();
+    await channel.send({ embeds: [emb] }).catch(() => {});
+  }
 }
 
 // A ticket channel this bot actually created always has its opener's user
@@ -497,6 +542,17 @@ client.on("interactionCreate", async i => {
   // ---- Application ticket modal submit ----
   if (i.isModalSubmit() && i.customId.startsWith("m_")) {
     const t = i.customId.slice(2), v = tickets[t];
+
+    // Block opening a second ticket of the same type while one's already
+    // open — looks for an existing channel in this type's category whose
+    // topic (the opener's user ID) matches them.
+    const existing = i.guild.channels.cache.find(ch =>
+      ch.parentId === config.categories[t] && ch.topic === i.user.id
+    );
+    if (existing) {
+      return i.reply({ content: `You already have an open ${v.label} ticket: ${existing}`, ephemeral: true });
+    }
+
     try {
       const c = await i.guild.channels.create({
         name: `${t}-${i.user.username}`.toLowerCase(),
@@ -510,9 +566,28 @@ client.on("interactionCreate", async i => {
         ]
       });
       touchActivity(c.id);
+
+      // For giveaway tickets, parse "How much did you win?" (q0) into a
+      // plain number so the amount check can use it, and so the embed
+      // shows it back in short form (e.g. "50k") the way people type it.
+      let wonAmount = null;
+      const fieldValues = v.questions.map((q, n) => {
+        const raw = i.fields.getTextInputValue("q" + n) || "N/A";
+        if (t === "giveaway" && n === 0) {
+          wonAmount = parseAmount(raw);
+          return { name: q.label, value: wonAmount !== null ? formatAmountShort(wonAmount) : raw };
+        }
+        return { name: q.label, value: raw };
+      });
+
       const emb = new EmbedBuilder().setColor("#8B5CF6").setTitle(`${v.emoji} ${v.label}`)
-        .addFields(v.questions.map((q, n) => ({ name: q.label, value: i.fields.getTextInputValue("q" + n) || "N/A" })))
+        .addFields(fieldValues)
         .setFooter({ text: "Sac's Services" });
+
+      if (t === "giveaway") {
+        emb.spliceFields(0, 0, { name: "Opened By", value: `${i.user}`, inline: false });
+      }
+
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
@@ -526,6 +601,15 @@ client.on("interactionCreate", async i => {
         actionBy: i.user,
         color: 0x8B5CF6
       });
+
+      // Giveaway claim checker — if they gave a real amount, check it right
+      // away. If not (left it blank / typed something we couldn't parse),
+      // they can still trigger it later by typing the amount as a plain
+      // message in the ticket — see the messageCreate listener below.
+      if (t === "giveaway" && wonAmount !== null) {
+        await runGiveawayCheck(c, i.user.id, wonAmount);
+      }
+
       return i.reply({ content: `Created: ${c}`, ephemeral: true });
     } catch (err) {
       console.error(`Failed to create "${t}" ticket for ${i.user.tag} (${i.user.id}):`, err);
@@ -1099,6 +1183,26 @@ client.on("messageCreate", message => {
       message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } }).catch(() => {});
     }
   }
+});
+
+// =====================================================================
+// GIVEAWAY CLAIM FOLLOW-UP CHECK
+// If someone left "How much did you win?" blank/unparseable in the
+// giveaway ticket modal, they can just type the amount as a plain message
+// in their ticket afterwards and the check runs then instead.
+// =====================================================================
+client.on("messageCreate", async message => {
+  if (message.author.bot || !message.guild) return;
+  if (message.channel.parentId !== config.categories.giveaway) return;
+  if (message.channel.topic !== message.author.id) return; // only the ticket opener
+  if (isGiveawayChecked(message.channel.id)) return;
+
+  const amount = parseAmount(message.content);
+  if (amount === null) return;
+
+  await runGiveawayCheck(message.channel, message.author.id, amount).catch(err => {
+    console.error("Giveaway claim check failed:", err);
+  });
 });
 
 // =====================================================================
